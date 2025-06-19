@@ -120,7 +120,10 @@ class MyLine(GeometricElement):
         
         :return: 点列表
         """
-        return np.array([self.point])
+        num_points = 100 # 定义 100 个点
+        alpha_values = np.linspace(0, 1, num_points) # 100个点
+        bounding_box = [self.mobject.point_from_proportion(alpha) for alpha in alpha_values]
+        return bounding_box
         
     def _create_label(self) -> Mobject:
         line = Line(self.start_point, self.end_point, color=BLACK, stroke_width=self.style["STROKE_WIDTH"])
@@ -142,6 +145,19 @@ class MyAngle(GeometricElement):
         """
         super().__init__(style)
         self.type = Element.ANGLE
+    
+    def get_bounding_box(self) -> list[np.ndarray]:
+        """
+        获取元素及其标签组合后的整体边界框，可用于碰撞检测和自动排版。
+        这里使用点列表保存实体边界，两个对象中的 最小的点跟点距离 判断是否碰撞
+        
+        :return: 点列表
+        """
+        return np.array([self.point])
+        
+    def _create_label(self) -> Mobject:
+        line = Arc(self.start_point, self.end_point, color=BLACK, stroke_width=self.style["STROKE_WIDTH"])
+        return line
 
 
 class MyRightAngleSymbol(GeometricElement):
