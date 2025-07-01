@@ -42,9 +42,9 @@ class GeometricElement:
 
     def _create_label(self) -> Mobject:
         """
-        一个通用的标签创建函数。
+        一个通用的对象创建函数。
         
-        :return: 创建好的 Manim 文本对象。
+        :return: 创建好的 Manim 对象。
         """
         
         return None
@@ -272,15 +272,50 @@ class MyCircle(GeometricElement):
         return circle
 
 
+class MyText(GeometricElement):
+    """
+    表示一个点
+    """
+    def __init__(self, text: string, location: np.ndarray, style: dict = None):
+        """
+
+        """
+        super().__init__(style)
+        self.type = Element.TEXT
+        self.text = text
+        self.location = location
+        self.mobject = self._create_label()
+
+
+    def get_bounding_box(self) -> list[np.ndarray]:
+        """
+        获取元素及其标签组合后的整体边界框，可用于碰撞检测和自动排版。
+        这里使用点列表保存实体边界，两个对象中的 最小的点跟点距离 判断是否碰撞
+        
+        :return: 点列表
+        """
+        return np.array([self.point])
+    
+    def _create_mobject(self) -> Mobject:
+        circle = Circle(
+            radius=self.radius, 
+            color=self.style["COLOR"],
+            stroke_width=self.style["STROKE_WIDTH"]
+        ).move_to(self.origin_point)
+        return circle
+
+
 # --- 关系与场景管理器 ---
 class Relation(Enum):
-    TEXT = 0
-    POINT = 1
-    LINE = 2
-    ANGLE = 3
-    RIGHTANGLE = 4
-    ARC = 5
-    CIRCLE = 6
+    Point_Text = 0
+    Line_Text = 1
+    Angle_Text = 2
+    Line_Points = 3
+    Angle_Points = 4
+    Vertical = 5
+    Parallel = 6
+    Circle_Point = 7
+    ...
 
 
 class ElementRelation:
@@ -289,11 +324,28 @@ class ElementRelation:
         ElementRelation._instance_counter += 1
         self.id = ElementRelation._instance_counter
 
-        self.description = []
+        self.description = {}
+
+    def __repr__(self):
+        return ""
+
+
+class PointTextRelation(ElementRelation):
+    def __init__(self, point: MyPoint, text: MyText):
+        super().__init__()
+        self._point = point
+        self._text = text
+
+    @property
+    def text(self) -> string:
+        return self._text.text
+
+    @property
+    def point(self) -> np.ndarray:
+        return self._point.point
     
-
-class 
-
+    def __repr__(self) -> string:
+        return f"点{self.text}({self.point.point[0]}, {self.point.point[1]}, {self.point.point[2]})"
 
 
 #  elements: list[GeometricElement]
