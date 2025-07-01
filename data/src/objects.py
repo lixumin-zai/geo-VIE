@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 # @Time    :   2025/06/17 10:09:16
 # @Author  :   lixumin1030@gmail.com
-# @FileName:   object.py
+# @FileName:   geo-object.py
 
 from enum import Enum
 from manim import *
 import random
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict, Any
 import numpy as np
+import math
 
 # 默认样式配置
 DEFAULT_STYLE = {
@@ -44,6 +45,7 @@ class GeometricElement:
         self.mobject = None       # 存储核心的 Manim 可视化对象 (e.g., Dot, Line)
         self.label = None         # 存储标签对象 (e.g., Text, MathTex)
         self.type = None          # 元素类型
+        self.value = None         # 元素的数值（长度、角度值等）
 
     def get_bounding_box(self) -> List[np.ndarray]:
         """
@@ -65,6 +67,11 @@ class GeometricElement:
     def set_key(self, key: str):
         """设置元素的唯一标识符"""
         self.key = key
+        return self
+
+    def set_value(self, value: Any):
+        """设置元素的数值"""
+        self.value = value
         return self
 
 
@@ -112,6 +119,8 @@ class MyLine(GeometricElement):
         self.start_point = start_point
         self.end_point = end_point
         self.mobject = self._create_mobject()
+        # 计算线段长度
+        self.value = np.linalg.norm(end_point - start_point)
 
     @property
     def vector(self) -> np.ndarray:
@@ -124,6 +133,11 @@ class MyLine(GeometricElement):
     @property
     def angle_deg(self) -> float:
         return self.mobject.get_angle() * 180 / PI
+    
+    @property
+    def length(self) -> float:
+        """获取线段长度"""
+        return self.value
     
     def get_bounding_box(self) -> List[np.ndarray]:
         """
@@ -158,6 +172,30 @@ class MyAngle(GeometricElement):
         self.vertex_point = vertex_point
         self.end_point = end_point
         self.mobject = self._create_mobject()
+        # 计算角度值
+        self.value = self._calculate_angle()
+
+    def _calculate_angle(self) -> float:
+        """计算角度值（弧度）"""
+        vec1 = self.start_point - self.vertex_point
+        vec2 = self.end_point - self.vertex_point
+        
+        # 计算两向量夹角
+        cos_angle = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        # 防止数值误差导致的域错误
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        angle_rad = np.arccos(cos_angle)
+        return angle_rad
+    
+    @property
+    def angle_deg(self) -> float:
+        """获取角度值（度）"""
+        return self.value * 180 / np.pi
+    
+    @property
+    def angle_rad(self) -> float:
+        """获取角度值（弧度）"""
+        return self.value
     
     def get_bounding_box(self) -> List[np.ndarray]:
         """
@@ -191,6 +229,18 @@ class MyRightAngle(GeometricElement):
         self.vertex_point = vertex_point
         self.end_point = end_point
         self.mobject = self._create_mobject()
+        # 直角固定为90度
+        self.value = np.pi / 2
+    
+    @property
+    def angle_deg(self) -> float:
+        """获取角度值（度）"""
+        return 90.0
+    
+    @property
+    def angle_rad(self) -> float:
+        """获取角度值（弧度）"""
+        return self.value
     
     def get_bounding_box(self) -> List[np.ndarray]:
         """
@@ -255,6 +305,7 @@ class MyCircle(GeometricElement):
         self.type = Element.CIRCLE
         self.center_point = center_point
         self.radius = radius
+        self.value = radius  # 圆的值为半径
         self.mobject = self._create_mobject()
     
     def get_bounding_box(self) -> List[np.ndarray]:
@@ -279,6 +330,13 @@ class MyCircle(GeometricElement):
         ).move_to(self.center_point)
         return circle
 
+    def point_on_circle(self, angle_rad: float) -> np.ndarray:
+        """获取圆上指定角度的点"""
+        x = self.center_point[0] + self.radius * np.cos(angle_rad)
+        y = self.center_point[1] + self.radius * np.sin(angle_rad)
+        z = self.center_point[2]
+        return np.array([x, y, z])
+
 
 class MyText(GeometricElement):
     """
@@ -289,6 +347,7 @@ class MyText(GeometricElement):
         self.type = Element.TEXT
         self.text = text
         self.location = location
+        self.value = text  # 文本的值就是文本内容
         self.mobject = self._create_mobject()
 
     def get_bounding_box(self) -> List[np.ndarray]:
@@ -314,18 +373,32 @@ class MyText(GeometricElement):
 # --- 关系与场景管理器 ---
 class RelationType(Enum):
     """关系类型枚举"""
+    # 基础标注关系
     POINT_TEXT = "point_text"           # 点与文本的标注关系
-    LINE_TEXT = "line_text"             # 线段与文本的标注关系
-    ANGLE_TEXT = "angle_text"           # 角与文本的标注关系
+    LINE_TEXT = "line_text"             # 线段与文本的标注关系（表示长度）
+    ANGLE_TEXT = "angle_text"           # 角与文本的标注关系（表示角度值）
+    CIRCLE_TEXT = "circle_text"         # 圆与文本的标注关系（表示半径）
+    
+    # 构成关系
     LINE_POINTS = "line_points"         # 线段由两点构成的关系
     ANGLE_POINTS = "angle_points"       # 角由三点构成的关系
+    CIRCLE_CENTER = "circle_center"     # 圆心关系
+    
+    # 位置关系
+    POINT_ON_LINE = "point_on_line"     # 点在线段上
+    POINT_ON_CIRCLE = "point_on_circle" # 点在圆上
+    POINT_IN_CIRCLE = "point_in_circle" # 点在圆内
+    LINE_TANGENT_CIRCLE = "line_tangent_circle"  # 直线与圆相切
+    
+    # 几何关系
     VERTICAL = "vertical"               # 垂直关系
     PARALLEL = "parallel"               # 平行关系
-    CIRCLE_POINT = "circle_point"       # 圆心关系
     EQUAL_LENGTH = "equal_length"       # 等长关系
     EQUAL_ANGLE = "equal_angle"         # 等角关系
-    TANGENT = "tangent"                 # 切线关系
     INTERSECTION = "intersection"       # 交点关系
+    
+    # 复合关系
+    NESTED_RELATION = "nested_relation" # 嵌套关系
 
 
 class ElementRelation:
@@ -339,6 +412,7 @@ class ElementRelation:
         self.elements = elements
         self.description = description
         self.properties = {}  # 存储关系的额外属性
+        self.nested_relations: List['ElementRelation'] = []  # 嵌套的子关系
 
     def add_property(self, key: str, value):
         """添加关系属性"""
@@ -349,13 +423,27 @@ class ElementRelation:
         """获取关系属性"""
         return self.properties.get(key, default)
 
+    def add_nested_relation(self, relation: 'ElementRelation'):
+        """添加嵌套关系"""
+        self.nested_relations.append(relation)
+        return self
+
+    def get_nested_relations(self, relation_type: RelationType = None) -> List['ElementRelation']:
+        """获取嵌套关系"""
+        if relation_type is None:
+            return self.nested_relations
+        return [r for r in self.nested_relations if r.relation_type == relation_type]
+
     def validate(self) -> bool:
         """验证关系是否有效"""
         return len(self.elements) > 0
 
     def __repr__(self) -> str:
         element_ids = [str(elem.id) for elem in self.elements]
-        return f"{self.relation_type.value}({', '.join(element_ids)}): {self.description}"
+        result = f"{self.relation_type.value}({', '.join(element_ids)}): {self.description}"
+        if self.nested_relations:
+            result += f" [嵌套关系: {len(self.nested_relations)}个]"
+        return result
 
 
 class PointTextRelation(ElementRelation):
@@ -376,6 +464,69 @@ class PointTextRelation(ElementRelation):
     def __repr__(self) -> str:
         coords = self._point.point
         return f"点{self.text}({coords[0]:.2f}, {coords[1]:.2f})"
+
+
+class LineTextRelation(ElementRelation):
+    """线段与文本的标注关系（表示长度）"""
+    def __init__(self, line: MyLine, text: MyText, description: str = ""):
+        super().__init__(RelationType.LINE_TEXT, [line, text], description)
+        self._line = line
+        self._text = text
+
+    @property
+    def length_text(self) -> str:
+        """获取长度文本"""
+        return self._text.text
+
+    @property
+    def actual_length(self) -> float:
+        """获取实际长度"""
+        return self._line.length
+
+    def __repr__(self) -> str:
+        return f"线段{self._line.key}长度: {self.length_text} (实际: {self.actual_length:.2f})"
+
+
+class AngleTextRelation(ElementRelation):
+    """角与文本的标注关系（表示角度值）"""
+    def __init__(self, angle: Union[MyAngle, MyRightAngle], text: MyText, description: str = ""):
+        super().__init__(RelationType.ANGLE_TEXT, [angle, text], description)
+        self._angle = angle
+        self._text = text
+
+    @property
+    def angle_text(self) -> str:
+        """获取角度文本"""
+        return self._text.text
+
+    @property
+    def actual_angle_deg(self) -> float:
+        """获取实际角度（度）"""
+        return self._angle.angle_deg
+
+    def __repr__(self) -> str:
+        return f"角{self._angle.key}度数: {self.angle_text} (实际: {self.actual_angle_deg:.1f}°)"
+
+
+class CircleTextRelation(ElementRelation):
+    """圆与文本的标注关系（表示半径）"""
+    def __init__(self, circle: MyCircle, text: MyText, description: str = ""):
+        super().__init__(RelationType.CIRCLE_TEXT, [circle, text], description)
+        self._circle = circle
+        self._text = text
+
+    @property
+    def radius_text(self) -> str:
+        """获取半径文本"""
+        return self._text.text
+
+    @property
+    def actual_radius(self) -> float:
+        """获取实际半径"""
+        return self._circle.radius
+
+    def __repr__(self) -> str:
+        return f"圆{self._circle.key}半径: {self.radius_text} (实际: {self.actual_radius:.2f})"
 
 
 class LinePointsRelation(ElementRelation):
@@ -399,7 +550,50 @@ class LinePointsRelation(ElementRelation):
         return self._end_point
 
     def __repr__(self) -> str:
-        return f"线段由点{self._start_point.key}和点{self._end_point.key}构成"
+        return f"线段{self._line.key}由点{self._start_point.key}和点{self._end_point.key}构成"
+
+
+class CircleCenterRelation(ElementRelation):
+    """圆心关系"""
+    def __init__(self, circle: MyCircle, center_point: MyPoint, description: str = ""):
+        super().__init__(RelationType.CIRCLE_CENTER, [circle, center_point], description)
+        self._circle = circle
+        self._center_point = center_point
+
+    @property
+    def circle(self) -> MyCircle:
+        return self._circle
+
+    @property
+    def center_point(self) -> MyPoint:
+        return self._center_point
+
+    def __repr__(self) -> str:
+        return f"圆{self._circle.key}的圆心是点{self._center_point.key}"
+
+
+class PointOnCircleRelation(ElementRelation):
+    """点在圆上的关系"""
+    def __init__(self, point: MyPoint, circle: MyCircle, description: str = ""):
+        super().__init__(RelationType.POINT_ON_CIRCLE, [point, circle], description)
+        self._point = point
+        self._circle = circle
+
+    @property
+    def point(self) -> MyPoint:
+        return self._point
+
+    @property
+    def circle(self) -> MyCircle:
+        return self._circle
+
+    def is_on_circle(self, tolerance: float = 1e-6) -> bool:
+        """检查点是否真的在圆上"""
+        distance = np.linalg.norm(self._point.point - self._circle.center_point)
+        return abs(distance - self._circle.radius) < tolerance
+
+    def __repr__(self) -> str:
+        return f"点{self._point.key}在圆{self._circle.key}上"
 
 
 class ParallelRelation(ElementRelation):
@@ -433,6 +627,21 @@ class EqualLengthRelation(ElementRelation):
     def __repr__(self) -> str:
         line_keys = [line.key for line in self._lines if line.key]
         return f"等长: {' = '.join(line_keys)}"
+
+
+class NestedRelation(ElementRelation):
+    """嵌套关系 - 用于表示复杂的组合关系"""
+    def __init__(self, primary_relation: ElementRelation, description: str = ""):
+        super().__init__(RelationType.NESTED_RELATION, primary_relation.elements, description)
+        self.primary_relation = primary_relation
+
+    def __repr__(self) -> str:
+        result = f"嵌套关系: {self.primary_relation}"
+        if self.nested_relations:
+            result += "\n  包含子关系:"
+            for i, rel in enumerate(self.nested_relations, 1):
+                result += f"\n    {i}. {rel}"
+        return result
 
 
 class GeometryScene:
@@ -474,14 +683,87 @@ class GeometryScene:
                 mobjects.append(element.label)
         return mobjects
 
+    def create_complex_relation_example(self):
+        """创建复杂嵌套关系的示例"""
+        # 创建一个圆和圆心
+        center = MyPoint(np.array([0, 0, 0]))
+        circle = MyCircle(center.point, 2.0)
+        self.add_element(center, "O")
+        self.add_element(circle, "circle_O")
+        
+        # 创建圆心关系
+        center_relation = CircleCenterRelation(circle, center, "圆心关系")
+        self.add_relation(center_relation)
+        
+        # 在圆上创建几个点
+        point_A = MyPoint(circle.point_on_circle(0))  # 0度
+        point_B = MyPoint(circle.point_on_circle(np.pi/2))  # 90度
+        point_C = MyPoint(circle.point_on_circle(np.pi))  # 180度
+        
+        self.add_element(point_A, "A")
+        self.add_element(point_B, "B")
+        self.add_element(point_C, "C")
+        
+        # 创建点在圆上的关系
+        point_on_circle_A = PointOnCircleRelation(point_A, circle)
+        point_on_circle_B = PointOnCircleRelation(point_B, circle)
+        point_on_circle_C = PointOnCircleRelation(point_C, circle)
+        
+        self.add_relation(point_on_circle_A)
+        self.add_relation(point_on_circle_B)
+        self.add_relation(point_on_circle_C)
+        
+        # 创建半径线段
+        radius_OA = MyLine(center.point, point_A.point)
+        radius_OB = MyLine(center.point, point_B.point)
+        
+        self.add_element(radius_OA, "OA")
+        self.add_element(radius_OB, "OB")
+        
+        # 创建线段构成关系
+        line_relation_OA = LinePointsRelation(radius_OA, center, point_A)
+        line_relation_OB = LinePointsRelation(radius_OB, center, point_B)
+        
+        self.add_relation(line_relation_OA)
+        self.add_relation(line_relation_OB)
+        
+        # 创建等长关系（半径相等）
+        equal_radius = EqualLengthRelation([radius_OA, radius_OB], "半径相等")
+        self.add_relation(equal_radius)
+        
+        # 创建长度标注
+        radius_text = MyText("r", np.array([1, 0.2, 0]))
+        self.add_element(radius_text, "radius_label")
+        
+        radius_text_relation = LineTextRelation(radius_OA, radius_text, "半径标注")
+        self.add_relation(radius_text_relation)
+        
+        # 创建嵌套关系示例
+        # 圆心关系可以嵌套点在圆上的关系
+        center_relation.add_nested_relation(point_on_circle_A)
+        center_relation.add_nested_relation(point_on_circle_B)
+        center_relation.add_nested_relation(point_on_circle_C)
+        
+        # 等长关系可以嵌套线段构成关系
+        equal_radius.add_nested_relation(line_relation_OA)
+        equal_radius.add_nested_relation(line_relation_OB)
+        
+        return center_relation, equal_radius
+
     def __repr__(self) -> str:
         result = f"几何场景 - 元素数量: {len(self.elements)}, 关系数量: {len(self.relations)}\n"
         result += "元素:\n"
         for element in self.elements:
-            result += f"  {element.key or element.id}: {element.type.name}\n"
+            result += f"  {element.key or element.id}: {element.type.name}"
+            if hasattr(element, 'value') and element.value is not None:
+                result += f" (值: {element.value})"
+            result += "\n"
         result += "关系:\n"
         for relation in self.relations:
             result += f"  {relation}\n"
+            # 显示嵌套关系
+            for nested in relation.nested_relations:
+                result += f"    └─ {nested}\n"
         return result
 
 
@@ -491,116 +773,52 @@ class GeometryExampleScene(Scene):
         # 创建几何场景管理器
         geo_scene = GeometryScene()
         
-        # 创建一个等腰直角三角形的示例
-        # 定义三个顶点
-        point_A = MyPoint(np.array([-2, -1, 0]))
-        point_B = MyPoint(np.array([2, -1, 0]))
-        point_C = MyPoint(np.array([0, 2, 0]))
-        
-        # 添加点到场景
-        geo_scene.add_element(point_A, "A")
-        geo_scene.add_element(point_B, "B")
-        geo_scene.add_element(point_C, "C")
-        
-        # 创建文本标签
-        text_A = MyText("A", np.array([-2.3, -1.3, 0]))
-        text_B = MyText("B", np.array([2.3, -1.3, 0]))
-        text_C = MyText("C", np.array([0, 2.3, 0]))
-        
-        geo_scene.add_element(text_A, "label_A")
-        geo_scene.add_element(text_B, "label_B")
-        geo_scene.add_element(text_C, "label_C")
-        
-        # 创建三角形的三条边
-        line_AB = MyLine(point_A.point, point_B.point)
-        line_BC = MyLine(point_B.point, point_C.point)
-        line_CA = MyLine(point_C.point, point_A.point)
-        
-        geo_scene.add_element(line_AB, "AB")
-        geo_scene.add_element(line_BC, "BC")
-        geo_scene.add_element(line_CA, "CA")
-        
-        # 创建角度标记
-        angle_A = MyAngle(point_B.point, point_A.point, point_C.point, {"COLOR": BLUE})
-        angle_B = MyAngle(point_C.point, point_B.point, point_A.point, {"COLOR": GREEN})
-        angle_C = MyRightAngle(point_A.point, point_C.point, point_B.point, {"COLOR": RED})
-        
-        geo_scene.add_element(angle_A, "angle_A")
-        geo_scene.add_element(angle_B, "angle_B")
-        geo_scene.add_element(angle_C, "angle_C")
-        
-        # 添加一个外接圆
-        # 计算三角形外心（对于直角三角形，外心是斜边中点）
-        circumcenter = (point_A.point + point_B.point) / 2
-        circumradius = np.linalg.norm(point_C.point - circumcenter)
-        circle = MyCircle(circumcenter, circumradius, {"COLOR": PURPLE, "STROKE_WIDTH": 1})
-        geo_scene.add_element(circle, "circumcircle")
-        
-        # 创建关系
-        geo_scene.add_relation(PointTextRelation(point_A, text_A, "点A的标注"))
-        geo_scene.add_relation(PointTextRelation(point_B, text_B, "点B的标注"))
-        geo_scene.add_relation(PointTextRelation(point_C, text_C, "点C的标注"))
-        
-        geo_scene.add_relation(LinePointsRelation(line_AB, point_A, point_B, "线段AB"))
-        geo_scene.add_relation(LinePointsRelation(line_BC, point_B, point_C, "线段BC"))
-        geo_scene.add_relation(LinePointsRelation(line_CA, point_C, point_A, "线段CA"))
-        
-        # 添加等长关系（等腰直角三角形的两腰相等）
-        geo_scene.add_relation(EqualLengthRelation([line_BC, line_CA], "BC = CA"))
-        
-        # 添加垂直关系
-        geo_scene.add_relation(VerticalRelation(line_BC, line_CA, "BC ⊥ CA"))
+        # 创建复杂关系示例
+        center_relation, equal_radius = geo_scene.create_complex_relation_example()
         
         # 获取所有可视化对象并添加到场景
         mobjects = geo_scene.get_mobjects()
         
         # 分组动画显示
-        # 1. 首先显示点
-        points = [point_A.mobject, point_B.mobject, point_C.mobject]
-        self.add(*points)
+        # 1. 首先显示圆心
+        center = geo_scene.get_element("O")
+        self.play(Create(center.mobject))
         
-        # 2. 显示点的标签
-        labels = [text_A.mobject, text_B.mobject, text_C.mobject]
-        self.add(*labels)
+        # 2. 显示圆
+        circle = geo_scene.get_element("circle_O")
+        self.play(Create(circle.mobject))
         
-        # 3. 绘制三角形的边
-        lines = [line_AB.mobject, line_BC.mobject, line_CA.mobject]
-        self.add(*lines)
+        # 3. 显示圆上的点
+        points = [geo_scene.get_element("A").mobject, 
+                 geo_scene.get_element("B").mobject, 
+                 geo_scene.get_element("C").mobject]
+        self.play(*[Create(point) for point in points])
         
-        # 4. 显示角度标记
-        angles = [angle_A.mobject, angle_B.mobject, angle_C.mobject]
-        self.add(*angles)
+        # 4. 显示半径
+        radii = [geo_scene.get_element("OA").mobject, 
+                geo_scene.get_element("OB").mobject]
+        self.play(*[Create(radius) for radius in radii])
         
-        # 5. 最后显示外接圆
-        self.add(circle.mobject)
+        # 5. 显示半径标注
+        radius_label = geo_scene.get_element("radius_label")
+        self.play(Write(radius_label.mobject))
         
-        # 添加一些文字说明
-        title = Text("等腰直角三角形及其外接圆", font_size=36, color=BLACK).to_edge(UP)
-        self.add(title)
-        
-        # 添加性质说明
-        properties = VGroup(
-            Text("性质:", font_size=24, color=BLACK),
-            Text("• BC = CA (等腰)", font_size=20, color=BLACK),
-            Text("• ∠C = 90° (直角)", font_size=20, color=BLACK),
-            Text("• ∠A = ∠B = 45°", font_size=20, color=BLACK),
-            Text("• 外心在斜边中点", font_size=20, color=BLACK)
-        ).arrange(DOWN, aligned_edge=LEFT).to_edge(LEFT).shift(DOWN * 2)
-        
-        self.add(properties)
+        # 添加标题
+        title = Text("复杂几何关系示例", font_size=36, color=BLACK).to_edge(UP)
+        self.play(Write(title))
         
         # 打印场景信息到控制台
-        print("\n=== 几何场景信息 ===")
+        print("\n=== 复杂几何场景信息 ===")
         print(geo_scene)
         
         # 等待一段时间
-        # self.wait(3)
-# /root/project/geo-vie/data/src/media/images/GeometryExampleScene_ManimCE_v0.19.0.png
+        self.wait(3)
+
 
 # 示例使用
 if __name__ == "__main__":
-    config.frame_height = 10.0
-    config.frame_width = 10.0
+    config.frame_height = 25.0
+    config.frame_width = 25.0
     with tempconfig(
         {
             # "quality": "low_quality",
