@@ -64,16 +64,6 @@ class GeometricElement:
         """
         raise NotImplementedError("子类必须实现此方法")
 
-    def set_key(self, key: str):
-        """设置元素的唯一标识符"""
-        self.key = key
-        return self
-
-    def set_value(self, value: Any):
-        """设置元素的数值"""
-        self.value = value
-        return self
-
 
 class Element(Enum):
     TEXT = 0
@@ -105,7 +95,7 @@ class MyPoint(GeometricElement):
 
     def _create_mobject(self) -> Mobject:
         """创建点的可视化对象"""
-        dot = Dot(self.point, color=self.style["COLOR"], radius=0.05)
+        dot = Dot(self.point, color=RED, radius=0.1)
         return dot
 
 
@@ -574,14 +564,14 @@ class LinePointsRelation(ElementRelation):
 
     @property
     def start_point(self) -> MyPoint:
-        return self._start_point
+        return self._start_point.point
 
     @property
     def end_point(self) -> MyPoint:
-        return self._end_point
+        return self._end_point.point
 
     def __repr__(self) -> str:
-        return f"线段{self._line.key}由点{self._start_point.key}和点{self._end_point.key}构成"
+        return f"线段{self.line.id}由点{self._start_point.id}和点{self._end_point.id}构成"
 
 
 class CircleCenterRelation(ElementRelation):
@@ -682,13 +672,9 @@ class GeometryScene:
         self.relations: List[ElementRelation] = []
         self.element_map = {}  # key -> element 的映射
 
-    def add_element(self, element: GeometricElement, key: str = None) -> GeometricElement:
+    def add_element(self, element: GeometricElement) -> GeometricElement:
         """添加几何元素"""
         self.elements.append(element)
-        if key:
-            element.set_key(key)
-            self.element_map[key] = element
-        return element
 
     def add_relation(self, relation: ElementRelation) -> ElementRelation:
         """添加元素关系"""

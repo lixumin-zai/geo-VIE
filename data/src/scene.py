@@ -74,7 +74,7 @@ class Config:
         self.draw_angle_probability = 0.9
         self.point_generation_radius = 5
         self.min_point_distance = 2
-        self.max_points = 5
+        self.max_points = 8
         self.data = None
         self.is_online_type = 0
 
@@ -189,16 +189,16 @@ class GeometricSceneGenerator(Scene):
                 active_list.pop(index)
         
         # 限制点的数量
-        point_count = min(random.randint(2, self.config.max_points), len(points))
+        point_count = min(random.randint(4, self.config.max_points), len(points))
         selected_points = random.sample(points, point_count)
         
         # 创建MyPoint对象
         my_points = []
-        for point in selected_points:
+        for i, point in enumerate(selected_points):
             if self.point_labels:
                 my_point = MyPoint(point, self.style)
                 my_points.append(my_point)
-                self.geometry_scene.add_element(my_point)
+                self.geometry_scene.add_element(my_point, label)
         
         return my_points
     
@@ -231,9 +231,10 @@ class GeometricSceneGenerator(Scene):
                     intermediate_point = point1.point + proportion * (point2.point - point1.point)
                     
                     label = self.point_labels.pop()
-                    my_point = MyPoint(intermediate_point, self.style).set_key(label)
+                    my_point = MyPoint(intermediate_point, self.style)
+                    my_point.key = label  # 直接设置key属性
                     new_points.append(my_point)
-                    self.geometry_scene.add_element(my_point)
+                    self.geometry_scene.add_element(my_point, label)
         
         return new_points
     
@@ -244,13 +245,13 @@ class GeometricSceneGenerator(Scene):
         random.shuffle(point_combinations)
         
         # 限制每个点的连接数
-        point_connection_count = {point.key: 0 for point in points}
+        point_connection_count = {point.id: 0 for point in points}
         max_connections = 4
         
         for point1, point2 in point_combinations:
             # 检查连接数限制
-            if (point_connection_count[point1.key] >= max_connections or 
-                point_connection_count[point2.key] >= max_connections):
+            if (point_connection_count[point1.id] >= max_connections or 
+                point_connection_count[point2.id] >= max_connections):
                 continue
             
             # 检查是否有其他点过于接近这条线
@@ -267,16 +268,21 @@ class GeometricSceneGenerator(Scene):
             
             if line_valid:
                 line_label = self.line_labels.pop() if self.line_labels else ""
-                line = MyLine(point1.point, point2.point, self.style).set_key(f"{point1.key}{point2.key}").set_value(line_label)
+                line = MyLine(point1.point, point2.point, self.style)
+                
+                # 生成线段标识符
+                line_key = f"{point1.key}{point2.key}"
+                line.key = line_key  # 直接设置key属性
+                
                 lines.append(line)
-                self.geometry_scene.add_element(line)
+                self.geometry_scene.add_element(line, line_key)
                 
                 # 建立线段与点的构成关系
-                relation = LinePointsRelation(line, point1, point2, f"线段{line.key}由点{point1.key}和{point2.key}构成")
+                relation = LinePointsRelation(line, point1, point2, f"线段{line_key}由点{point1.key}和{point2.key}构成")
                 self.geometry_scene.add_relation(relation)
                 
-                point_connection_count[point1.key] += 1
-                point_connection_count[point2.key] += 1
+                point_connection_count[point1.id] += 1
+                point_connection_count[point2.id] += 1
         
         return lines
     
@@ -286,10 +292,18 @@ class GeometricSceneGenerator(Scene):
         line_combinations = list(itertools.combinations(lines, 2))
         
         for line1, line2 in line_combinations:
-            # 检查线段是否共享端点
-            shared_points = set(line1.key) & set(line2.key)
+            # 检查线段是否共享端点（通过关系系统）
+            line1_points = self.geometry_scene.get_points_on_line(line1)
+            line2_points = self.geometry_scene.get_points_on_line(line2)
+            
+            shared_points = []
+            for p1 in line1_points:
+                for p2 in line2_points:
+                    if p1.id == p2.id:
+                        shared_points.append(p1)
+            
             if shared_points:
-                continue
+                continue  # 如果有共享端点，跳过
             
             # 计算交点
             intersection = self._line_intersection(line1, line2)
@@ -307,22 +321,20 @@ class GeometricSceneGenerator(Scene):
                     
                     if not too_close and self.point_labels:
                         label = self.point_labels.pop()
-                        intersection_point = MyPoint(intersection, self.style).set_key(label)
+                        intersection_point = MyPoint(intersection, self.style)
+                        intersection_point.key = label  # 直接设置key属性
                         new_points.append(intersection_point)
-                        self.geometry_scene.add_element(intersection_point)
+                        self.geometry_scene.add_element(intersection_point, label)
         
         return new_points
     
-    def generate_angles(self, points: List[MyPoint], lines: List[MyLine]) -> List[MyAngle]:
+    def generate_angles(self, points: List[MyPoint], lines: List[MyLine]) -> List[Union[MyAngle, MyRightAngle]]:
         """生成角度并建立关系"""
         angles = []
         
         for point in points:
-            # 找到以该点为顶点的所有线段
-            connected_lines = []
-            for line in lines:
-                if point.key in line.key:
-                    connected_lines.append(line)
+            # 通过关系系统找到以该点为顶点的所有线段
+            connected_lines = self.geometry_scene.get_lines_through_point(point)
             
             if len(connected_lines) < 2:
                 continue
@@ -331,20 +343,24 @@ class GeometricSceneGenerator(Scene):
             line_angles = []
             for line in connected_lines:
                 # 确定线段的方向（从当前点出发）
-                if line.key[0] == point.key:
-                    direction = line.end_point - line.start_point
-                else:
-                    direction = line.start_point - line.end_point
+                line_points = self.geometry_scene.get_points_on_line(line)
+                other_point = None
+                for lp in line_points:
+                    if lp.id != point.id:
+                        other_point = lp
+                        break
                 
-                angle = np.arctan2(direction[1], direction[0])
-                line_angles.append((line, angle))
+                if other_point:
+                    direction = other_point.point - point.point
+                    angle = np.arctan2(direction[1], direction[0])
+                    line_angles.append((line, angle, other_point))
             
             line_angles.sort(key=lambda x: x[1])
             
             # 生成相邻线段之间的角
             for i in range(len(line_angles)):
-                line1, angle1 = line_angles[i]
-                line2, angle2 = line_angles[(i + 1) % len(line_angles)]
+                line1, angle1, other_point1 = line_angles[i]
+                line2, angle2, other_point2 = line_angles[(i + 1) % len(line_angles)]
                 
                 # 计算角度差
                 angle_diff = (angle2 - angle1) % (2 * np.pi)
@@ -354,40 +370,28 @@ class GeometricSceneGenerator(Scene):
                 if angle_deg > 180 or angle_deg < 20:
                     continue
                 
-                # 检查线段长度
-                # if line1.length < 3 or line2.length < 3:
-                #     continue
-                
                 # 确定角的三个点
-                if line1.key[0] == point.key:
-                    start_point = line1.end_point
-                else:
-                    start_point = line1.start_point
-                
+                start_point = other_point1.point
                 vertex_point = point.point
-                
-                if line2.key[0] == point.key:
-                    end_point = line2.end_point
-                else:
-                    end_point = line2.start_point
+                end_point = other_point2.point
                 
                 # 检查是否是直角
                 if 85 < angle_deg < 95:
                     angle_obj = MyRightAngle(start_point, vertex_point, end_point, self.style)
-                    angle_key = f"{line1.key[1] if line1.key[0] == point.key else line1.key[0]}{point.key}{line2.key[1] if line2.key[0] == point.key else line2.key[0]}"
                 else:
                     angle_obj = MyAngle(start_point, vertex_point, end_point, self.style)
-                    angle_key = f"{line1.key[1] if line1.key[0] == point.key else line1.key[0]}{point.key}{line2.key[1] if line2.key[0] == point.key else line2.key[0]}"
                 
-                angle_obj.set_key(angle_key)
+                # 生成角度标识符
+                angle_key = f"{other_point1.key}{point.key}{other_point2.key}"
+                angle_obj.key = angle_key  # 直接设置key属性
                 
                 # 添加角度标签
                 if self.angle_labels and is_happen(0.7):
                     angle_label = self.angle_labels.pop()
-                    angle_obj.set_value(angle_label)
+                    angle_obj.value = angle_label  # 直接设置value属性
                 
                 angles.append(angle_obj)
-                self.geometry_scene.add_element(angle_obj)
+                self.geometry_scene.add_element(angle_obj, angle_key)
         
         return angles
     
@@ -404,7 +408,7 @@ class GeometricSceneGenerator(Scene):
                 if label_position is not None:
                     text_label = MyText(element.key, label_position, self.style)
                     text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label)
+                    self.geometry_scene.add_element(text_label, f"{element.key}_label")
                     
                     # 建立点文本关系
                     relation = PointTextRelation(element, text_label, f"点{element.key}的标注")
@@ -421,13 +425,13 @@ class GeometricSceneGenerator(Scene):
                 perpendicular = perpendicular / np.linalg.norm(perpendicular) * 0.5
                 
                 label_position = midpoint + perpendicular
-                text_label = MyText(element.value, label_position, self.style)
+                text_label = MyText(str(element.value), label_position, self.style)
                 
                 # 检查碰撞
                 if not any(self.collision_detector.check_collision(text_label, existing) 
                           for existing in all_elements + text_elements):
                     text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label)
+                    self.geometry_scene.add_element(text_label, f"{element.key}_length_label")
                     
                     # 建立线段文本关系
                     relation = LineTextRelation(element, text_label, f"线段{element.key}的长度标注")
@@ -438,13 +442,13 @@ class GeometricSceneGenerator(Scene):
             if element.type in [Element.ANGLE, Element.RIGHTANGLE] and element.value and is_happen(self.config.show_angle_text_probability):
                 # 计算角平分线上的位置
                 label_position = self._calculate_angle_label_position(element)
-                text_label = MyText(element.value, label_position, self.style)
+                text_label = MyText(str(element.value), label_position, self.style)
                 
                 # 检查碰撞
                 if not any(self.collision_detector.check_collision(text_label, existing) 
                           for existing in all_elements + text_elements):
                     text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label)
+                    self.geometry_scene.add_element(text_label, f"{element.key}_angle_label")
                     
                     # 建立角文本关系
                     relation = AngleTextRelation(element, text_label, f"角{element.key}的角度标注")
@@ -487,8 +491,8 @@ class GeometricSceneGenerator(Scene):
     
     def render_scene(self):
         """渲染场景"""
-        # 获取所有Manim对象并添加到场景
-        manim_objects = self.geometry_scene.get_manim_objects()
+        # 获取需要渲染的Manim对象并添加到场景
+        manim_objects = self.geometry_scene.get_renderable_mobjects()
         for obj in manim_objects:
             self.add(obj)
         
@@ -589,7 +593,7 @@ class GeometricSceneGenerator(Scene):
                 print(f"尝试生成场景 {attempt + 1}/{max_attempts}")
                 
                 # 重置场景
-                self.geometry_scene = GeometryScene()
+                self.geometry_scene = EnhancedGeometryScene()
                 self.output_data = {
                     "points": [],
                     "lines": [],
@@ -603,25 +607,23 @@ class GeometricSceneGenerator(Scene):
                 base_points = self.generate_base_points()
                 if len(base_points) < 2:
                     continue
-                for i in base_points:
-                    print(i.point)
-                    self.add(i.mobject)
+                
+                # 2. 添加中间点
+                intermediate_points = self.add_intermediate_points(base_points)
+                all_points = base_points + intermediate_points
 
-                print(base_points)
+                # 3. 生成线段
+                lines = self.generate_lines(all_points)
+                if len(lines) < 1:
+                    continue
                 
-                # # 2. 添加中间点
-                # intermediate_points = self.add_intermediate_points(base_points)
-                # all_points = base_points + intermediate_points
+                # 4. 找到交点
+                intersection_points = self.find_intersections(lines)
+                all_points.extend(intersection_points)
                 
-                # # 3. 生成线段
-                # lines = self.generate_lines(all_points)
-                # if len(lines) < 1:
-                #     continue
-                
-                # # 4. 找到交点
-                # intersection_points = self.find_intersections(lines)
-                # all_points.extend(intersection_points)
-                
+                # 5. 生成角度
+                # angles = self.generate_angles(all_points, lines)
+
                 # # 5. 重新生成线段（包括交点产生的新线段）
                 # if intersection_points:
                 #     additional_lines = self.generate_lines(intersection_points)
@@ -642,6 +644,8 @@ class GeometricSceneGenerator(Scene):
                 # else:
                 #     print("场景验证失败，重新生成...")
 
+                for i in self.geometry_scene.get_mobjects():
+                    self.add(i)
                 self.render_scene()
                 break
                     
@@ -685,19 +689,19 @@ if __name__ == "__main__":
     }):
         os.makedirs("/app/data/images/", exist_ok=True)
         os.makedirs("/app/data/infos/", exist_ok=True)
-        
-        try:
-            scene_config = Config()
-            scene = GeometricSceneGenerator(scene_config)
-            scene.render()
-            
-            # 保存输出数据
-            with open("/app/data/scene_data.json", "w", encoding="utf-8") as f:
-                json.dump(scene.output_data, f, ensure_ascii=False, indent=2)
+        with open(f"/app/data/1.json", "w", encoding="utf-8") as f:
+            config.output_file = f"/app/data/1"
+            try:
+                scene_config = Config()
+                scene = GeometricSceneGenerator(scene_config)
+                scene.render()
                 
-        except Exception as e:
-            print(f"渲染失败: {e}")
-            traceback.print_exc()
+                # 保存输出数据
+                with open("/app/data/scene_data.json", "w", encoding="utf-8") as f:
+                    json.dump(scene.output_data, f, ensure_ascii=False, indent=2)
+                    
+            except Exception as e:
+                print(f"渲染失败: {e}")
+                traceback.print_exc()
     
-    # /root/project/geo-vie/data/src/media/images/GeometricSceneGenerator_ManimCE_v0.19.0.png
-    # /root/project/geo-vie/data/src/media/images/GeometricSceneGenerator_ManimCE_v0.19.0.png
+    # /root/project/geo-vie/data/data/1.png
