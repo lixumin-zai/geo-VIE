@@ -352,18 +352,49 @@ class MyText(GeometricElement):
 
     def get_bounding_box(self) -> List[np.ndarray]:
         """
-        获取文本的边界框
+        在文本边界框的矩形边上均匀采样指定数量的点。
+        这符合你“选取100个点作为边界框”的需求。
         
-        :return: 文本边界框的四个角点
+        :param num_points: 要采样的点的总数，默认为100
+        :return: 一个包含所有边界点的 numpy 数组，形状为 (num_points, 3)
         """
-        # 获取文本对象的边界框
-        bbox = self.mobject.get_bounding_box()
-        return [bbox[0], bbox[1]]  # 返回左下角和右上角
+        num_points = 100
+        # 1. 首先获取四个角点
+        top_left = self.mobject.get_corner(UL)  # UL is equivalent to UP + LEFT
+        top_right = self.mobject.get_corner(UR) # UR is equivalent to UP + RIGHT
+        bottom_right = self.mobject.get_corner(DR) # DR is equivalent to DOWN + RIGHT
+        bottom_left = self.mobject.get_corner(DL)  # DL is equivalent to DOWN + LEFT
+        
+        corners = [top_left, top_right, bottom_right, bottom_left]
+        tl, tr, br, bl = corners
+
+        # 2. 计算每条边应分配多少个点
+        # 为了均匀分布，我们让每条边分配 num_points / 4 个点
+        # 我们将在每条边的线段上生成点，但不包括终点，以避免角点重复
+        points_per_side = num_points // 4
+        
+        # 3. 使用 np.linspace 在每条边上生成点
+        # np.linspace(start, stop, N) 会生成 N 个点
+        # 为了避免终点重复，我们为前三条边生成 points_per_side 个点
+        # 最后一条边填充剩余的点，以确保总数正好是 num_points
+        
+        top_edge = np.linspace(tl, tr, points_per_side, endpoint=False)
+        right_edge = np.linspace(tr, br, points_per_side, endpoint=False)
+        bottom_edge = np.linspace(br, bl, points_per_side, endpoint=False)
+        
+        # 计算最后一条边需要多少点来凑齐总数
+        remaining_points = num_points - (points_per_side * 3)
+        left_edge = np.linspace(bl, tl, remaining_points, endpoint=False)
+        
+        # 4. 合并所有点
+        all_points = np.vstack([top_edge, right_edge, bottom_edge, left_edge])
+        
+        return all_points
     
     def _create_mobject(self) -> Mobject:
         """创建文本的可视化对象"""
         text_obj = Text(
-            self.text,
+            str(self.text),
             font_size=self.style["FONT_SIZE"],
             color=self.style["TEXT_COLOR"]
         ).move_to(self.location)
@@ -668,6 +699,14 @@ class GeometryScene:
     def get_element(self, key: str) -> Optional[GeometricElement]:
         """根据key获取元素"""
         return self.element_map.get(key)
+
+    def get_manim_objects(self) -> List[Mobject]:
+        """获取所有Manim可视化对象（与get_mobjects方法功能相同）"""
+        return self.get_mobjects()
+    
+    def get_elements_by_type(self, element_type: Element) -> List[GeometricElement]:
+        """根据类型获取元素"""
+        return [e for e in self.elements if e.type == element_type]
 
     def get_relations_by_type(self, relation_type: RelationType) -> List[ElementRelation]:
         """根据类型获取关系"""
