@@ -669,12 +669,17 @@ class GeometryScene:
     """几何场景管理器"""
     def __init__(self):
         self.elements: List[GeometricElement] = []
+        self.render_elements: List[GeometricElement] = []
         self.relations: List[ElementRelation] = []
         self.element_map = {}  # key -> element 的映射
 
     def add_element(self, element: GeometricElement) -> GeometricElement:
         """添加几何元素"""
         self.elements.append(element)
+
+    def add_render_elements(self, element: GeometricElement) -> GeometricElement:
+        """添加渲染元素"""
+        self.render_elements.extend(element)
 
     def add_relation(self, relation: ElementRelation) -> ElementRelation:
         """添加元素关系"""

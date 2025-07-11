@@ -72,9 +72,9 @@ class Config:
         self.show_angle_text_probability = 0.8
         self.draw_line_probability = 0.2
         self.draw_angle_probability = 0.9
-        self.point_generation_radius = 5
-        self.min_point_distance = 2
-        self.max_points = 8
+        self.point_generation_radius = 8
+        self.min_point_distance = 5
+        self.max_points = 5
         self.data = None
         self.is_online_type = 0
 
@@ -193,18 +193,16 @@ class GeometricSceneGenerator(Scene):
         selected_points = random.sample(points, point_count)
         
         # 创建MyPoint对象
-        my_points = []
         for i, point in enumerate(selected_points):
             if self.point_labels:
                 my_point = MyPoint(point, self.style)
-                my_points.append(my_point)
-                self.geometry_scene.add_element(my_point, label)
-        
-        return my_points
+                self.geometry_scene.add_element(my_point)
+
     
-    def add_intermediate_points(self, points: List[MyPoint]) -> List[MyPoint]:
+    def add_intermediate_points(self) -> List[MyPoint]:
         """在长线段上添加中间点"""
         new_points = []
+        points = self.geometry_scene.get_elements_by_type(Element.POINT)
         point_combinations = list(itertools.combinations(points, 2))
         
         for point1, point2 in point_combinations:
@@ -230,11 +228,9 @@ class GeometricSceneGenerator(Scene):
                     proportion = random.uniform(0.3, 0.7) if num_intermediate == 1 else (0.3 + i * 0.4)
                     intermediate_point = point1.point + proportion * (point2.point - point1.point)
                     
-                    label = self.point_labels.pop()
                     my_point = MyPoint(intermediate_point, self.style)
-                    my_point.key = label  # 直接设置key属性
                     new_points.append(my_point)
-                    self.geometry_scene.add_element(my_point, label)
+                    self.geometry_scene.add_element(my_point)
         
         return new_points
     
@@ -270,15 +266,11 @@ class GeometricSceneGenerator(Scene):
                 line_label = self.line_labels.pop() if self.line_labels else ""
                 line = MyLine(point1.point, point2.point, self.style)
                 
-                # 生成线段标识符
-                line_key = f"{point1.key}{point2.key}"
-                line.key = line_key  # 直接设置key属性
-                
                 lines.append(line)
-                self.geometry_scene.add_element(line, line_key)
+                self.geometry_scene.add_element(line)
                 
                 # 建立线段与点的构成关系
-                relation = LinePointsRelation(line, point1, point2, f"线段{line_key}由点{point1.key}和{point2.key}构成")
+                relation = LinePointsRelation(line, point1, point2, f"线段{line.id}由点{point1.id}和{point2.id}构成")
                 self.geometry_scene.add_relation(relation)
                 
                 point_connection_count[point1.id] += 1
@@ -492,7 +484,7 @@ class GeometricSceneGenerator(Scene):
     def render_scene(self):
         """渲染场景"""
         # 获取需要渲染的Manim对象并添加到场景
-        manim_objects = self.geometry_scene.get_renderable_mobjects()
+        manim_objects = self.geometry_scene.get_mobjects()
         for obj in manim_objects:
             self.add(obj)
         
@@ -537,12 +529,23 @@ class GeometricSceneGenerator(Scene):
     
     # 辅助方法
     def _are_collinear(self, p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, tolerance: float = 0.1) -> bool:
-        """检查三点是否共线"""
-        # 使用叉积检查共线性
+        """检查三点在三维空间中是否共线"""
+        # 确保向量是三维的，如果原始点是二维的，可以补零
+        if p1.shape[0] < 3:
+            # 这是一个示例处理，实际中你可能需要根据情况调整
+            p1 = np.append(p1, [0] * (3 - p1.shape[0]))
+            p2 = np.append(p2, [0] * (3 - p2.shape[0]))
+            p3 = np.append(p3, [0] * (3 - p3.shape[0]))
+
         v1 = p2 - p1
         v2 = p3 - p1
-        cross_product = np.cross(v1[:2], v2[:2])
-        return abs(cross_product) < tolerance
+        
+        # 计算三维向量的叉积，结果是一个三维向量
+        cross_product_vector = np.cross(v1, v2)
+        
+        # 如果点共线，叉积向量的模（长度）应该接近于 0
+        # np.linalg.norm 计算向量的模
+        return np.linalg.norm(cross_product_vector) < tolerance
     
     def _point_to_line_distance(self, point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
         """计算点到线段的距离"""
@@ -593,7 +596,7 @@ class GeometricSceneGenerator(Scene):
                 print(f"尝试生成场景 {attempt + 1}/{max_attempts}")
                 
                 # 重置场景
-                self.geometry_scene = EnhancedGeometryScene()
+                self.geometry_scene = GeometryScene()
                 self.output_data = {
                     "points": [],
                     "lines": [],
@@ -604,22 +607,21 @@ class GeometricSceneGenerator(Scene):
                 }
                 
                 # 1. 生成基础点
-                base_points = self.generate_base_points()
-                if len(base_points) < 2:
+                self.generate_base_points()
+                if len(self.geometry_scene.get_elements_by_type(Element.POINT)) < 2:
                     continue
                 
                 # 2. 添加中间点
-                intermediate_points = self.add_intermediate_points(base_points)
-                all_points = base_points + intermediate_points
+                self.add_intermediate_points()
 
-                # 3. 生成线段
-                lines = self.generate_lines(all_points)
-                if len(lines) < 1:
-                    continue
+                # # 3. 生成线段
+                # lines = self.generate_lines(all_points)
+                # if len(lines) < 1:
+                #     continue
                 
-                # 4. 找到交点
-                intersection_points = self.find_intersections(lines)
-                all_points.extend(intersection_points)
+                # # 4. 找到交点
+                # intersection_points = self.find_intersections(lines)
+                # all_points.extend(intersection_points)
                 
                 # 5. 生成角度
                 # angles = self.generate_angles(all_points, lines)
@@ -644,8 +646,6 @@ class GeometricSceneGenerator(Scene):
                 # else:
                 #     print("场景验证失败，重新生成...")
 
-                for i in self.geometry_scene.get_mobjects():
-                    self.add(i)
                 self.render_scene()
                 break
                     
