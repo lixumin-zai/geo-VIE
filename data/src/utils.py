@@ -53,3 +53,17 @@ def find_lines_intersection_point(line1: MyLine, line2: MyLine) -> Optional[np.n
         return intersection_point
     # 交点在延长线上，线段不相交
     return None
+
+
+def point_to_line_distance(point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
+    """计算点到线段的距离"""
+    line_vec = line_end - line_start
+    point_vec = point - line_start
+    line_len = np.linalg.norm(line_vec)
+    if line_len == 0:
+        return np.linalg.norm(point_vec)
+    
+    line_unitvec = line_vec / line_len
+    proj_length = np.dot(point_vec, line_unitvec)
+    proj = line_start + proj_length * line_unitvec
+    return np.linalg.norm(point - proj)

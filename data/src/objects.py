@@ -93,7 +93,7 @@ class MyPoint(GeometricElement):
         """
         return [self.point]
 
-    def _create_mobject(self) -> Mobject:
+    def _create_mobject(self, color=None) -> Mobject:
         """创建点的可视化对象"""
         dot = Dot(self.point, color=RED, radius=0.1)
         return dot
@@ -140,10 +140,10 @@ class MyLine(GeometricElement):
         bounding_box = [self.mobject.point_from_proportion(alpha) for alpha in alpha_values]
         return bounding_box
         
-    def _create_mobject(self) -> Mobject:
+    def _create_mobject(self, color=None) -> Mobject:
         """创建线段的可视化对象"""
         line = Line(self.start_point, self.end_point, 
-                   color=self.style["COLOR"], 
+                   color=color if color else self.style["COLOR"], 
                    stroke_width=self.style["STROKE_WIDTH"])
         return line
 
@@ -716,6 +716,7 @@ class GeometryScene:
     def remove_element(self, element: GeometricElement):
         """移除元素"""
         if element in self.elements:
+            print(element.type)
             self.elements.remove(element)
 
     def get_points_on_line(self, line: MyLine) -> List[MyPoint]:

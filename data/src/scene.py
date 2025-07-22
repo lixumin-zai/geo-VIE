@@ -258,8 +258,13 @@ class GeometricSceneGenerator(Scene):
                     continue
                 
                 # 计算点到线的距离
-                dist = self._point_to_line_distance(other_point.point, point1.point, point2.point)
-                if 0.05 < dist < 1:
+                dist = point_to_line_distance(other_point.point, point1.point, point2.point)
+                if dist <= 0.5:
+                    if point1.point[0] < other_point.point[0] < point2.point[0] or point2.point[0] < other_point.point[0] < point1.point[0]:
+                        line_valid = False
+                        break
+                
+                if 0.5 < dist < 1:
                     line_valid = False
                     break
             
@@ -294,7 +299,7 @@ class GeometricSceneGenerator(Scene):
                 # 有交点
                 too_close = False
                 for point in point_elements:
-                    if np.linalg.norm(intersection - point.point) < 0.8:
+                    if np.linalg.norm(intersection - point.point) < 0.2:
                         too_close = True
                         break
                 if not too_close:
@@ -319,11 +324,14 @@ class GeometricSceneGenerator(Scene):
                     self.geometry_scene.remove_element(line1)
                     self.geometry_scene.remove_element(line2)
                     found_new_point = True
+                    break
             else:
                 continue
             
         if found_new_point:
             self.find_intersections()
+        
+        return True
             
     
     def generate_angles(self, points: List[MyPoint], lines: List[MyLine]) -> List[Union[MyAngle, MyRightAngle]]:
@@ -490,10 +498,47 @@ class GeometricSceneGenerator(Scene):
     def render_scene(self):
         """渲染场景"""
         # 获取需要渲染的Manim对象并添加到场景
-        manim_objects = self.geometry_scene.get_mobjects()
-        for obj in manim_objects:
-            self.add(obj)
+        dark_colors_hex_reversed = [
+            # 其他混合深色调 (25)
+            '#343434', '#2A002A', '#1C1C3C', '#3D004D', '#4C5866',
+            '#510051', '#4682B4', '#8B008B', '#556B2F', '#8B4513',
+            '#008B8B', '#0E1111', '#1E2D2F', '#242424', '#16161D',
+            '#4A4A4A', '#293133', '#1F305E', '#2C3E50', '#1A1A1A',
+            '#0A0A0A', '#1E1F22', '#23272A', '#36393F', '#2E2E2E',
+
+            # 深棕色 / 其他暖色系 (15)
+            '#3B3121', '#321414', '#402A14', '#3C1414', '#4A2511',
+            '#1B1212', '#2A1D15', '#3B2E1E', '#6D4C41', '#5D4037',
+            '#4E342E', '#3E2723', '#5C4033', '#3D2B1F', '#654321',
+
+            # 深红色 / 紫色系 (15)
+            '#310036', '#601848', '#4A0404', '#3E0000', '#7B1113',
+            '#480607', '#5D1B36', '#3B1B54', '#483D8B', '#4B0082',
+            '#4C0000', '#5C0000', '#660000', '#800000', '#8B0000',
+
+            # 深绿色系 (15)
+            '#192F29', '#0F2D25', '#003E33', '#003125', '#002A22',
+            '#355E3B', '#1A472A', '#00563F', '#2E8B57', '#228B22',
+            '#004000', '#013220', '#1B4D3E', '#004D40', '#006400',
+
+            # 深蓝色系 (15)
+            '#2A3B4C', '#1C3144', '#001F3F', '#34495E', '#283747',
+            '#003366', '#14213D', '#1B263B', '#0D1B2A', '#0A192F',
+            '#011627', '#002244', '#191970', '#00008B', '#000080',
+
+            # 中性色 / 深灰色系 (15)
+            '#2F4F4F', '#404040', '#3C3C3C', '#36454F', '#333333',
+            '#2C2F33', '#282828', '#242526', '#212121', '#1F1F1F',
+            '#1C1C1E', '#181818', '#121212', '#080808', '#000000'
+        ]
+
+        for idx, obj in enumerate(self.geometry_scene.elements):
+            self.add(obj._create_mobject(color=dark_colors_hex_reversed[idx]))
+            # 在对象出现后，暂停 0.5 秒
+            self.wait(0.1)
         
+        print(len(self.geometry_scene.get_elements_by_type(Element.POINT)))
+        print(len(self.geometry_scene.get_elements_by_type(Element.LINE)))
         # 收集输出数据
         self._collect_output_data()
     
@@ -553,19 +598,6 @@ class GeometricSceneGenerator(Scene):
         # np.linalg.norm 计算向量的模
         return np.linalg.norm(cross_product_vector) < tolerance
     
-    def _point_to_line_distance(self, point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
-        """计算点到线段的距离"""
-        line_vec = line_end - line_start
-        point_vec = point - line_start
-        line_len = np.linalg.norm(line_vec)
-        if line_len == 0:
-            return np.linalg.norm(point_vec)
-        
-        line_unitvec = line_vec / line_len
-        proj_length = np.dot(point_vec, line_unitvec)
-        proj = line_start + proj_length * line_unitvec
-        return np.linalg.norm(point - proj)
-    
     def _line_intersection(self, line1: MyLine, line2: MyLine) -> Optional[np.ndarray]:
         """计算两条线段的交点"""
         p1, p2 = line1.start_point[:2], line1.end_point[:2]
@@ -624,7 +656,7 @@ class GeometricSceneGenerator(Scene):
                 self.generate_lines()
                 
                 # 4. 找到交点
-                self.find_intersections()
+                is_break = self.find_intersections()
                 
                 # 5. 生成角度
                 # angles = self.generate_angles(all_points, lines)
