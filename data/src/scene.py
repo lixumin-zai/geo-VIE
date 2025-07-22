@@ -14,6 +14,7 @@ import itertools
 import numpy as np
 import math
 from typing import List, Dict, Tuple, Optional
+from utils import *
 
 def is_happen(happen_probability):
     return np.random.choice([True, False], p=[happen_probability, 1-happen_probability])
@@ -130,7 +131,7 @@ class GeometricSceneGenerator(Scene):
         random.shuffle(angle_labels)
         return angle_labels
     
-    def generate_base_points(self) -> List[MyPoint]:
+    def generate_base_points(self):
         """使用泊松圆盘采样生成基础点"""
         radius = self.config.point_generation_radius
         r = self.config.min_point_distance
@@ -198,8 +199,7 @@ class GeometricSceneGenerator(Scene):
                 my_point = MyPoint(point, self.style)
                 self.geometry_scene.add_element(my_point)
 
-    
-    def add_intermediate_points(self) -> List[MyPoint]:
+    def add_intermediate_points(self):
         """在长线段上添加中间点"""
         new_points = []
         points = self.geometry_scene.get_elements_by_type(Element.POINT)
@@ -234,9 +234,10 @@ class GeometricSceneGenerator(Scene):
         
         return new_points
     
-    def generate_lines(self, points: List[MyPoint]) -> List[MyLine]:
+    def generate_lines(self):
         """生成线段并建立关系"""
         lines = []
+        points = self.geometry_scene.get_elements_by_type(Element.POINT)
         point_combinations = list(itertools.combinations(points, 2))
         random.shuffle(point_combinations)
         
@@ -278,47 +279,52 @@ class GeometricSceneGenerator(Scene):
         
         return lines
     
-    def find_intersections(self, lines: List[MyLine]) -> List[MyPoint]:
+    def find_intersections(self):
         """找到线段交点并创建新点"""
-        new_points = []
+        # 获取所有线段并开始递归处理
+        lines = self.geometry_scene.get_elements_by_type(Element.LINE)
         line_combinations = list(itertools.combinations(lines, 2))
+        found_new_point = False
         
+        point_elements = self.geometry_scene.get_elements_by_type(Element.POINT)
+        new_points = []
         for line1, line2 in line_combinations:
-            # 检查线段是否共享端点（通过关系系统）
-            line1_points = self.geometry_scene.get_points_on_line(line1)
-            line2_points = self.geometry_scene.get_points_on_line(line2)
-            
-            shared_points = []
-            for p1 in line1_points:
-                for p2 in line2_points:
-                    if p1.id == p2.id:
-                        shared_points.append(p1)
-            
-            if shared_points:
-                continue  # 如果有共享端点，跳过
-            
-            # 计算交点
-            intersection = self._line_intersection(line1, line2)
-            if intersection is not None:
-                # 检查交点是否在两条线段内
-                if (self._point_on_segment(intersection, line1.start_point, line1.end_point) and
-                    self._point_on_segment(intersection, line2.start_point, line2.end_point)):
+            intersection = find_lines_intersection_point(line1, line2)
+            if isinstance(intersection, np.ndarray):
+                # 有交点
+                too_close = False
+                for point in point_elements:
+                    if np.linalg.norm(intersection - point.point) < 0.8:
+                        too_close = True
+                        break
+                if not too_close:
+                    # 创建交点
+                    intersection_point = MyPoint(intersection, self.style)
+                    new_points.append(intersection_point)
+                    self.geometry_scene.add_element(intersection_point)
+                    # 分割原有线段,创建新的线段
+                    # 分割line1
+                    new_line1a = MyLine(line1.start_point, intersection, self.style)
+                    new_line1b = MyLine(intersection, line1.end_point, self.style)
+                    # 分割line2
+                    new_line2a = MyLine(line2.start_point, intersection, self.style)
+                    new_line2b = MyLine(intersection, line2.end_point, self.style)
                     
-                    # 检查交点是否与现有点过近
-                    too_close = False
-                    for point in self.geometry_scene.get_elements_by_type(Element.POINT):
-                        if np.linalg.norm(intersection - point.point) < 0.8:
-                            too_close = True
-                            break
+                    # 添加新线段到场景
+                    new_lines = [new_line1a, new_line1b, new_line2a, new_line2b]
+                    for line in new_lines:
+                        self.geometry_scene.add_element(line)
                     
-                    if not too_close and self.point_labels:
-                        label = self.point_labels.pop()
-                        intersection_point = MyPoint(intersection, self.style)
-                        intersection_point.key = label  # 直接设置key属性
-                        new_points.append(intersection_point)
-                        self.geometry_scene.add_element(intersection_point, label)
-        
-        return new_points
+                    # 移除原有线段
+                    self.geometry_scene.remove_element(line1)
+                    self.geometry_scene.remove_element(line2)
+                    found_new_point = True
+            else:
+                continue
+            
+        if found_new_point:
+            self.find_intersections()
+            
     
     def generate_angles(self, points: List[MyPoint], lines: List[MyLine]) -> List[Union[MyAngle, MyRightAngle]]:
         """生成角度并建立关系"""
@@ -614,14 +620,11 @@ class GeometricSceneGenerator(Scene):
                 # 2. 添加中间点
                 self.add_intermediate_points()
 
-                # # 3. 生成线段
-                # lines = self.generate_lines(all_points)
-                # if len(lines) < 1:
-                #     continue
+                # 3. 生成线段
+                self.generate_lines()
                 
-                # # 4. 找到交点
-                # intersection_points = self.find_intersections(lines)
-                # all_points.extend(intersection_points)
+                # 4. 找到交点
+                self.find_intersections()
                 
                 # 5. 生成角度
                 # angles = self.generate_angles(all_points, lines)

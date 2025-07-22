@@ -7,4 +7,7 @@ docker run -dt --rm -v $(pwd):/app -w /app manimcommunity/manim:v0.19.0 bash
 
 docker exec -it 9f10 bash
 docker exec -it --user root 9f10 bash
+
+apt update
+apt install ffmpeg
 ```

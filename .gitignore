@@ -1,2 +1,6 @@
 *__pycache__
 *media
+venv
+data/data
+
+*.DS_Store

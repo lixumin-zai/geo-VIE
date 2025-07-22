@@ -713,6 +713,15 @@ class GeometryScene:
                 mobjects.append(element.label)
         return mobjects
 
+    def remove_element(self, element: GeometricElement):
+        """移除元素"""
+        if element in self.elements:
+            self.elements.remove(element)
+
+    def get_points_on_line(self, line: MyLine) -> List[MyPoint]:
+        """获取线段上的所有点"""
+        return [point for r in self.relations if r.relation_type == RelationType.LINE_POINTS for point in [r._start_point, r._end_point]]
+
     def create_complex_relation_example(self):
         """创建复杂嵌套关系的示例"""
         # 创建一个圆和圆心
