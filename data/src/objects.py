@@ -41,11 +41,8 @@ class GeometricElement:
         if style:
             self.style.update(style)
         
-        self.key = None           # 元素的唯一标识符，如 "A", "AB"
         self.mobject = None       # 存储核心的 Manim 可视化对象 (e.g., Dot, Line)
-        self.label = None         # 存储标签对象 (e.g., Text, MathTex)
-        self.type = None          # 元素类型
-        self.value = None         # 元素的数值（长度、角度值等）
+        self.show_id_point = ORIGIN
 
     def get_bounding_box(self) -> List[np.ndarray]:
         """
@@ -85,6 +82,8 @@ class MyPoint(GeometricElement):
         self.point = point
         self.mobject = self._create_mobject()
 
+        self.show_id_point = point
+
     def get_bounding_box(self) -> List[np.ndarray]:
         """
         获取点的边界框
@@ -109,6 +108,8 @@ class MyLine(GeometricElement):
         self.start_point = start_point
         self.end_point = end_point
         self.mobject = self._create_mobject()
+
+        self.show_id_point = (start_point + end_point) / 2
         # 计算线段长度
         self.value = np.linalg.norm(end_point - start_point)
 
@@ -123,7 +124,28 @@ class MyLine(GeometricElement):
     @property
     def angle_deg(self) -> float:
         return self.mobject.get_angle() * 180 / PI
-    
+
+    def angle_deg_on_point(self, point: np.ndarray) -> float:
+        """
+        计算以point为中心点时，线段方向向量与x轴正半轴的夹角(0-360度)
+        """
+        # 计算以point为中心的方向向量self   
+        if np.array_equal(point, self.start_point):
+            direction = self.end_point - self.start_point
+        elif np.array_equal(point, self.end_point):
+            direction = self.start_point - self.end_point
+        
+        # 计算与x轴正半轴的夹角
+        angle = np.arctan2(direction[1], direction[0])
+        
+        # 转换为角度并确保在0-360范围内
+        angle_deg = np.degrees(angle)
+        if angle_deg < 0:
+            angle_deg += 360
+            
+        return angle_deg
+        
+
     @property
     def length(self) -> float:
         """获取线段长度"""
@@ -198,12 +220,12 @@ class MyAngle(GeometricElement):
         bounding_box = [self.mobject.point_from_proportion(alpha) for alpha in alpha_values]
         return bounding_box
         
-    def _create_mobject(self) -> Mobject:
+    def _create_mobject(self, color=None) -> Mobject:
         """创建角的可视化对象"""
         angle = Angle(Line(self.vertex_point, self.start_point), 
                      Line(self.vertex_point, self.end_point),
                      radius=0.5, 
-                     color=self.style["COLOR"],
+                     color=color if color else self.style["COLOR"],
                      stroke_width=self.style["STROKE_WIDTH"])
         return angle
 
@@ -243,12 +265,12 @@ class MyRightAngle(GeometricElement):
         bounding_box = [self.mobject.point_from_proportion(alpha) for alpha in alpha_values]
         return bounding_box
         
-    def _create_mobject(self) -> Mobject:
+    def _create_mobject(self, color=None) -> Mobject:
         """创建直角符号的可视化对象"""
         angle = RightAngle(Line(self.vertex_point, self.start_point), 
                           Line(self.vertex_point, self.end_point),
                           length=0.2, 
-                          color=self.style["COLOR"],
+                          color=color if color else self.style["COLOR"],
                           stroke_width=self.style["STROKE_WIDTH"])
         return angle
 
@@ -435,14 +457,14 @@ class ElementRelation:
         self.properties = {}  # 存储关系的额外属性
         self.nested_relations: List['ElementRelation'] = []  # 嵌套的子关系
 
-    def add_property(self, key: str, value):
+    def add_property(self, id: str, value):
         """添加关系属性"""
-        self.properties[key] = value
+        self.properties[id] = value
         return self
 
-    def get_property(self, key: str, default=None):
+    def get_property(self, id: str, default=None):
         """获取关系属性"""
-        return self.properties.get(key, default)
+        return self.properties.get(id, default)
 
     def add_nested_relation(self, relation: 'ElementRelation'):
         """添加嵌套关系"""
@@ -505,7 +527,7 @@ class LineTextRelation(ElementRelation):
         return self._line.length
 
     def __repr__(self) -> str:
-        return f"线段{self._line.key}长度: {self.length_text} (实际: {self.actual_length:.2f})"
+        return f"线段{self._line.id}长度: {self.length_text} (实际: {self.actual_length:.2f})"
 
 
 class AngleTextRelation(ElementRelation):
@@ -526,7 +548,7 @@ class AngleTextRelation(ElementRelation):
         return self._angle.angle_deg
 
     def __repr__(self) -> str:
-        return f"角{self._angle.key}度数: {self.angle_text} (实际: {self.actual_angle_deg:.1f}°)"
+        return f"角{self._angle.id}度数: {self.angle_text} (实际: {self.actual_angle_deg:.1f}°)"
 
 
 class CircleTextRelation(ElementRelation):
@@ -547,7 +569,7 @@ class CircleTextRelation(ElementRelation):
         return self._circle.radius
 
     def __repr__(self) -> str:
-        return f"圆{self._circle.key}半径: {self.radius_text} (实际: {self.actual_radius:.2f})"
+        return f"圆{self._circle.id}半径: {self.radius_text} (实际: {self.actual_radius:.2f})"
 
 
 class LinePointsRelation(ElementRelation):
@@ -590,7 +612,7 @@ class CircleCenterRelation(ElementRelation):
         return self._center_point
 
     def __repr__(self) -> str:
-        return f"圆{self._circle.key}的圆心是点{self._center_point.key}"
+        return f"圆{self._circle.id}的圆心是点{self._center_point.id}"
 
 
 class PointOnCircleRelation(ElementRelation):
@@ -614,7 +636,7 @@ class PointOnCircleRelation(ElementRelation):
         return abs(distance - self._circle.radius) < tolerance
 
     def __repr__(self) -> str:
-        return f"点{self._point.key}在圆{self._circle.key}上"
+        return f"点{self._point.id}在圆{self._circle.id}上"
 
 
 class ParallelRelation(ElementRelation):
@@ -625,7 +647,7 @@ class ParallelRelation(ElementRelation):
         self._line2 = line2
 
     def __repr__(self) -> str:
-        return f"线段{self._line1.key} ∥ 线段{self._line2.key}"
+        return f"线段{self._line1.id} ∥ 线段{self._line2.id}"
 
 
 class VerticalRelation(ElementRelation):
@@ -636,7 +658,7 @@ class VerticalRelation(ElementRelation):
         self._line2 = line2
 
     def __repr__(self) -> str:
-        return f"线段{self._line1.key} ⊥ 线段{self._line2.key}"
+        return f"线段{self._line1.id} ⊥ 线段{self._line2.id}"
 
 
 class EqualLengthRelation(ElementRelation):
@@ -646,7 +668,7 @@ class EqualLengthRelation(ElementRelation):
         self._lines = lines
 
     def __repr__(self) -> str:
-        line_keys = [line.key for line in self._lines if line.key]
+        line_keys = [line.id for line in self._lines if line.id]
         return f"等长: {' = '.join(line_keys)}"
 
 
@@ -671,7 +693,7 @@ class GeometryScene:
         self.elements: List[GeometricElement] = []
         self.render_elements: List[GeometricElement] = []
         self.relations: List[ElementRelation] = []
-        self.element_map = {}  # key -> element 的映射
+        self.element_map = {}  # id -> element 的映射
 
     def add_element(self, element: GeometricElement) -> GeometricElement:
         """添加几何元素"""
@@ -687,9 +709,9 @@ class GeometryScene:
             self.relations.append(relation)
         return relation
 
-    def get_element(self, key: str) -> Optional[GeometricElement]:
-        """根据key获取元素"""
-        return self.element_map.get(key)
+    def get_element(self, id: str) -> Optional[GeometricElement]:
+        """根据id获取元素"""
+        return self.element_map.get(id)
 
     def get_manim_objects(self) -> List[Mobject]:
         """获取所有Manim可视化对象（与get_mobjects方法功能相同）"""
@@ -718,10 +740,29 @@ class GeometryScene:
         if element in self.elements:
             print(element.type)
             self.elements.remove(element)
+    
+    def remove_relation(self, relation: ElementRelation):
+        """移除关系"""
+        if relation in self.relations:
+            self.relations.remove(relation)
 
     def get_points_on_line(self, line: MyLine) -> List[MyPoint]:
         """获取线段上的所有点"""
-        return [point for r in self.relations if r.relation_type == RelationType.LINE_POINTS for point in [r._start_point, r._end_point]]
+        return [point for r in self.relations if r.relation_type == RelationType.LINE_POINTS if line == r._line for point in [r._start_point, r._end_point]]
+
+    def get_lines_through_point(self, point: MyPoint) -> List[MyLine]:
+        """获取通过点的所有线段"""
+        return [r._line for r in self.relations if r.relation_type == RelationType.LINE_POINTS if point in [r._start_point, r._end_point]]
+
+    def get_angle_point(self, line, point: np.ndarray) -> MyPoint:
+        """以该点（这个点是 start或end point其中一个）为起始点计算线段方向向量上的0.5的点"""
+        # 判断给定点是起点还是终点
+        for r in self.get_relations_by_type(RelationType.LINE_POINTS):
+            if line == r._line:
+                if np.array_equal(point, r._start_point.point):
+                    return r._end_point
+                elif np.array_equal(point, r._end_point.point):
+                    return r._start_point
 
     def create_complex_relation_example(self):
         """创建复杂嵌套关系的示例"""
@@ -794,7 +835,7 @@ class GeometryScene:
         result = f"几何场景 - 元素数量: {len(self.elements)}, 关系数量: {len(self.relations)}\n"
         result += "元素:\n"
         for element in self.elements:
-            result += f"  {element.key or element.id}: {element.type.name}"
+            result += f"  {element.id or element.id}: {element.type.name}"
             if hasattr(element, 'value') and element.value is not None:
                 result += f" (值: {element.value})"
             result += "\n"

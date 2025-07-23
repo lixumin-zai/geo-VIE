@@ -3,6 +3,7 @@
 # @Author  :   lixumin1030@gmail.com
 # @FileName:   scene.py
 
+from hmac import new
 from manim import *
 from objects import *
 import random
@@ -294,14 +295,27 @@ class GeometricSceneGenerator(Scene):
         point_elements = self.geometry_scene.get_elements_by_type(Element.POINT)
         new_points = []
         for line1, line2 in line_combinations:
+            
+
             intersection = find_lines_intersection_point(line1, line2)
             if isinstance(intersection, np.ndarray):
                 # 有交点
                 too_close = False
+
+                # 获取线段关系的点对象
+                for r in self.geometry_scene.get_relations_by_type(RelationType.LINE_POINTS):
+                    if line1 == r._line:
+                        line1_start_point = r._start_point
+                        line1_end_point = r._end_point
+                    if line2 == r._line:
+                        line2_start_point = r._start_point
+                        line2_end_point = r._end_point
+
                 for point in point_elements:
                     if np.linalg.norm(intersection - point.point) < 0.2:
                         too_close = True
                         break
+
                 if not too_close:
                     # 创建交点
                     intersection_point = MyPoint(intersection, self.style)
@@ -310,19 +324,32 @@ class GeometricSceneGenerator(Scene):
                     # 分割原有线段,创建新的线段
                     # 分割line1
                     new_line1a = MyLine(line1.start_point, intersection, self.style)
+                    relation1a = LinePointsRelation(new_line1a, line1_start_point, intersection_point, f"线段{new_line1a.id}由点{line1_start_point.id}和{intersection_point.id}构成")
+
                     new_line1b = MyLine(intersection, line1.end_point, self.style)
+                    relation1b = LinePointsRelation(new_line1b, intersection_point, line1_end_point, f"线段{new_line1b.id}由点{intersection_point.id}和{line1_end_point.id}构成")
+
                     # 分割line2
                     new_line2a = MyLine(line2.start_point, intersection, self.style)
+                    relation2a = LinePointsRelation(new_line2a, intersection_point, line2_start_point, f"线段{new_line2a.id}由点{intersection_point.id}和{line2_start_point.id}构成")
+
                     new_line2b = MyLine(intersection, line2.end_point, self.style)
-                    
+                    relation2b = LinePointsRelation(new_line2b, line2_end_point, intersection_point, f"线段{new_line2b.id}由点{intersection_point.id}和{line2_end_point.id}构成")
+
                     # 添加新线段到场景
                     new_lines = [new_line1a, new_line1b, new_line2a, new_line2b]
-                    for line in new_lines:
+                    new_relations = [relation1a, relation1b, relation2a, relation2b]
+                    for line, relation in zip(new_lines, new_relations):
                         self.geometry_scene.add_element(line)
-                    
+                        # 建立线段与点的构成关系
+                        self.geometry_scene.add_relation(relation)
+
                     # 移除原有线段
                     self.geometry_scene.remove_element(line1)
                     self.geometry_scene.remove_element(line2)
+                    # 移除关系
+                    self.geometry_scene.remove_relation(relation)
+                    self.geometry_scene.remove_relation(relation)
                     found_new_point = True
                     break
             else:
@@ -332,12 +359,17 @@ class GeometricSceneGenerator(Scene):
             self.find_intersections()
         
         return True
+
+    def delete_lines(self):
+        pass
             
     
-    def generate_angles(self, points: List[MyPoint], lines: List[MyLine]) -> List[Union[MyAngle, MyRightAngle]]:
+    def generate_angles(self):
         """生成角度并建立关系"""
         angles = []
-        
+
+        points = self.geometry_scene.get_elements_by_type(Element.POINT)
+        print(len(points))
         for point in points:
             # 通过关系系统找到以该点为顶点的所有线段
             connected_lines = self.geometry_scene.get_lines_through_point(point)
@@ -349,24 +381,15 @@ class GeometricSceneGenerator(Scene):
             line_angles = []
             for line in connected_lines:
                 # 确定线段的方向（从当前点出发）
-                line_points = self.geometry_scene.get_points_on_line(line)
-                other_point = None
-                for lp in line_points:
-                    if lp.id != point.id:
-                        other_point = lp
-                        break
-                
-                if other_point:
-                    direction = other_point.point - point.point
-                    angle = np.arctan2(direction[1], direction[0])
-                    line_angles.append((line, angle, other_point))
+                degree = line.angle_deg_on_point(point.point)
+                line_angles.append((line, degree))
             
             line_angles.sort(key=lambda x: x[1])
             
             # 生成相邻线段之间的角
             for i in range(len(line_angles)):
-                line1, angle1, other_point1 = line_angles[i]
-                line2, angle2, other_point2 = line_angles[(i + 1) % len(line_angles)]
+                line1, angle1 = line_angles[i]
+                line2, angle2 = line_angles[(i + 1) % len(line_angles)]
                 
                 # 计算角度差
                 angle_diff = (angle2 - angle1) % (2 * np.pi)
@@ -376,28 +399,22 @@ class GeometricSceneGenerator(Scene):
                 if angle_deg > 180 or angle_deg < 20:
                     continue
                 
-                # 确定角的三个点
-                start_point = other_point1.point
-                vertex_point = point.point
-                end_point = other_point2.point
+                # 确定角的三个点 
+                # start_point 为 line1 上半径为0.5的点
+                start_point = self.geometry_scene.get_angle_point(line2, point.point)
+                vertex_point = point
+                end_point = self.geometry_scene.get_angle_point(line1, point.point)
                 
+                print(start_point, vertex_point, end_point)
+
                 # 检查是否是直角
                 if 85 < angle_deg < 95:
-                    angle_obj = MyRightAngle(start_point, vertex_point, end_point, self.style)
+                    angle_obj = MyRightAngle(start_point.point, vertex_point.point, end_point.point, self.style)
                 else:
-                    angle_obj = MyAngle(start_point, vertex_point, end_point, self.style)
-                
-                # 生成角度标识符
-                angle_key = f"{other_point1.key}{point.key}{other_point2.key}"
-                angle_obj.key = angle_key  # 直接设置key属性
-                
-                # 添加角度标签
-                if self.angle_labels and is_happen(0.7):
-                    angle_label = self.angle_labels.pop()
-                    angle_obj.value = angle_label  # 直接设置value属性
+                    angle_obj = MyAngle(start_point.point, vertex_point.point, end_point.point, self.style)
                 
                 angles.append(angle_obj)
-                self.geometry_scene.add_element(angle_obj, angle_key)
+                self.geometry_scene.add_element(angle_obj)
         
         return angles
     
@@ -498,45 +515,28 @@ class GeometricSceneGenerator(Scene):
     def render_scene(self):
         """渲染场景"""
         # 获取需要渲染的Manim对象并添加到场景
-        dark_colors_hex_reversed = [
-            # 其他混合深色调 (25)
-            '#343434', '#2A002A', '#1C1C3C', '#3D004D', '#4C5866',
-            '#510051', '#4682B4', '#8B008B', '#556B2F', '#8B4513',
-            '#008B8B', '#0E1111', '#1E2D2F', '#242424', '#16161D',
-            '#4A4A4A', '#293133', '#1F305E', '#2C3E50', '#1A1A1A',
-            '#0A0A0A', '#1E1F22', '#23272A', '#36393F', '#2E2E2E',
-
-            # 深棕色 / 其他暖色系 (15)
-            '#3B3121', '#321414', '#402A14', '#3C1414', '#4A2511',
-            '#1B1212', '#2A1D15', '#3B2E1E', '#6D4C41', '#5D4037',
-            '#4E342E', '#3E2723', '#5C4033', '#3D2B1F', '#654321',
-
-            # 深红色 / 紫色系 (15)
-            '#310036', '#601848', '#4A0404', '#3E0000', '#7B1113',
-            '#480607', '#5D1B36', '#3B1B54', '#483D8B', '#4B0082',
-            '#4C0000', '#5C0000', '#660000', '#800000', '#8B0000',
-
-            # 深绿色系 (15)
-            '#192F29', '#0F2D25', '#003E33', '#003125', '#002A22',
-            '#355E3B', '#1A472A', '#00563F', '#2E8B57', '#228B22',
-            '#004000', '#013220', '#1B4D3E', '#004D40', '#006400',
-
-            # 深蓝色系 (15)
-            '#2A3B4C', '#1C3144', '#001F3F', '#34495E', '#283747',
-            '#003366', '#14213D', '#1B263B', '#0D1B2A', '#0A192F',
-            '#011627', '#002244', '#191970', '#00008B', '#000080',
-
-            # 中性色 / 深灰色系 (15)
-            '#2F4F4F', '#404040', '#3C3C3C', '#36454F', '#333333',
-            '#2C2F33', '#282828', '#242526', '#212121', '#1F1F1F',
-            '#1C1C1E', '#181818', '#121212', '#080808', '#000000'
-        ]
+        colors_hex = [
+    '#e68c2d', '#34e6b1', '#a534e6', '#e6d92d', '#3d2de6', '#62e634', '#e62d85', '#2de6e0', '#e63434', '#6be62d',
+    '#2d6fe6', '#e62dae', '#b1e634', '#3434e6', '#e69d2d', '#2de68e', '#d92de6', '#e0e62d', '#2d55e6', '#82e634',
+    '#e62d68', '#2de6d3', '#e6452d', '#55e62d', '#2d85e6', '#e62dbb', '#c8e634', '#3445e6', '#e6b12d', '#2de671',
+    '#e62de0', '#d3e62d', '#2d45e6', '#99e634', '#e62d51', '#2de6c8', '#e65c2d', '#3fe62d', '#2daee6', '#e62dce',
+    '#e0e634', '#345ce6', '#e6c82d', '#2de655', '#e62d99', '#bce62d', '#2d3fe6', '#e6712d', '#34e6c8', '#aee62d',
+    '#45e634', '#e62d45', '#68e62d', '#2dbbe6', '#e62d2e', '#8ee634', '#342de6', '#e6b1e6', '#2d99e6', '#2de671',
+    '#e68c41', '#34e69d', '#b12de6', '#e6d941', '#3d41e6', '#62e634', '#e64185', '#41e6e0', '#e63434', '#6b41e6',
+    '#416fe6', '#e641ae', '#b1e634', '#3434e6', '#e69d41', '#41e68e', '#d941e6', '#e0e641', '#4155e6', '#82e634',
+    '#e64168', '#41e6d3', '#e64541', '#55e641', '#4185e6', '#e641bb', '#c8e634', '#3445e6', '#e6b141', '#41e671',
+    '#e641e0', '#d3e641', '#4145e6', '#99e634', '#e64151', '#41e6c8', '#e65c41', '#3fe641', '#41aee6', '#e641ce'
+]
 
         for idx, obj in enumerate(self.geometry_scene.elements):
-            self.add(obj._create_mobject(color=dark_colors_hex_reversed[idx]))
+            self.add(obj._create_mobject(color=colors_hex[idx]))
+            self.add(Text(f"{obj.id}", color=BLACK, font_size=30).move_to(obj.show_id_point))
             # 在对象出现后，暂停 0.5 秒
             self.wait(0.1)
         
+        for relation in self.geometry_scene.relations:
+            print(relation)
+
         print(len(self.geometry_scene.get_elements_by_type(Element.POINT)))
         print(len(self.geometry_scene.get_elements_by_type(Element.LINE)))
         # 收集输出数据
@@ -546,26 +546,26 @@ class GeometricSceneGenerator(Scene):
         """收集输出数据"""
         # 收集点数据
         for element in self.geometry_scene.get_elements_by_type(Element.POINT):
-            if element.key:
+            if element.id:
                 self.output_data["points"].append({
-                    "key": element.key,
+                    "id": element.id,
                     "position": element.point.tolist()
                 })
         
         # 收集线段数据
         for element in self.geometry_scene.get_elements_by_type(Element.LINE):
-            if element.key:
+            if element.id:
                 self.output_data["lines"].append({
-                    "key": element.key,
+                    "id": element.id,
                     "length": element.length,
                     "value": element.value
                 })
         
         # 收集角度数据
         for element in self.geometry_scene.get_elements_by_type(Element.ANGLE):
-            if element.key:
+            if element.id:
                 self.output_data["angles"].append({
-                    "key": element.key,
+                    "id": element.id,
                     "degree": element.angle_deg,
                     "value": element.value
                 })
@@ -575,7 +575,7 @@ class GeometricSceneGenerator(Scene):
             self.output_data["relations"].append({
                 "type": relation.relation_type.value,
                 "description": relation.description,
-                "elements": [elem.key for elem in relation.elements if elem.key]
+                "elements": [elem.id for elem in relation.elements if elem.id]
             })
     
     # 辅助方法
@@ -659,15 +659,7 @@ class GeometricSceneGenerator(Scene):
                 is_break = self.find_intersections()
                 
                 # 5. 生成角度
-                # angles = self.generate_angles(all_points, lines)
-
-                # # 5. 重新生成线段（包括交点产生的新线段）
-                # if intersection_points:
-                #     additional_lines = self.generate_lines(intersection_points)
-                #     lines.extend(additional_lines)
-                
-                # # 6. 生成角度
-                # angles = self.generate_angles(all_points, lines)
+                # self.generate_angles()
                 
                 # # 7. 添加文本标签（带碰撞检测）
                 # self.add_text_labels_with_collision_detection()
