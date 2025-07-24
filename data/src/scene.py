@@ -333,10 +333,10 @@ class GeometricSceneGenerator(Scene):
 
                     # 分割line2
                     new_line2a = MyLine(line2.start_point, intersection, self.style)
-                    relation2a = LinePointsRelation(new_line2a, intersection_point, line2_start_point, f"线段{new_line2a.id}由点{intersection_point.id}和{line2_start_point.id}构成")
+                    relation2a = LinePointsRelation(new_line2a, line2_start_point, intersection_point, f"线段{new_line2a.id}由点{intersection_point.id}和{line2_start_point.id}构成")
 
                     new_line2b = MyLine(intersection, line2.end_point, self.style)
-                    relation2b = LinePointsRelation(new_line2b, line2_end_point, intersection_point, f"线段{new_line2b.id}由点{intersection_point.id}和{line2_end_point.id}构成")
+                    relation2b = LinePointsRelation(new_line2b, intersection_point, line2_end_point, f"线段{new_line2b.id}由点{intersection_point.id}和{line2_end_point.id}构成")
 
                     # 添加新线段到场景
                     new_lines = [new_line1a, new_line1b, new_line2a, new_line2b]
@@ -371,7 +371,6 @@ class GeometricSceneGenerator(Scene):
         angles = []
 
         points = self.geometry_scene.get_elements_by_type(Element.POINT)
-        print(len(points))
         for point in points:
             # 通过关系系统找到以该点为顶点的所有线段
             connected_lines = self.geometry_scene.get_lines_through_point(point)
@@ -390,33 +389,38 @@ class GeometricSceneGenerator(Scene):
             
             # 生成相邻线段之间的角
             for i in range(len(line_angles)):
+                
                 line1, angle1 = line_angles[i]
                 line2, angle2 = line_angles[(i + 1) % len(line_angles)]
                 
+                # 最后一个线段跟第一个线段
+                if line2 == line_angles[0][0]:
+                    angle2 = angle2 + 360
+
                 # 计算角度差
-                angle_diff = (angle2 - angle1) % (2 * np.pi)
-                angle_deg = np.degrees(angle_diff)
+                angle_diff = (angle2 - angle1) 
                 
                 # 过滤过大或过小的角
-                if angle_deg > 180 or angle_deg < 20:
+                if angle_diff > 175 or angle_diff < 20:
                     continue
                 
                 # 确定角的三个点 
                 # start_point 为 line1 上半径为0.5的点
-                start_point = self.geometry_scene.get_angle_point(line2, point.point)
+                start_point = self.geometry_scene.get_angle_point(line1, point.point)
                 vertex_point = point
-                end_point = self.geometry_scene.get_angle_point(line1, point.point)
+                end_point = self.geometry_scene.get_angle_point(line2, point.point)
                 
-                print(start_point, vertex_point, end_point)
+                # print(start_point, vertex_point, end_point)
 
                 # 检查是否是直角
-                if 85 < angle_deg < 95:
+                if 85 < angle_diff < 95:
                     angle_obj = MyRightAngle(start_point.point, vertex_point.point, end_point.point, self.style)
                 else:
                     angle_obj = MyAngle(start_point.point, vertex_point.point, end_point.point, self.style)
                 
                 angles.append(angle_obj)
                 self.geometry_scene.add_element(angle_obj)
+                self.geometry_scene.add_relation(AngleLineRelation(angle_obj, line1, line2))
         
         return angles
     
@@ -528,13 +532,13 @@ class GeometricSceneGenerator(Scene):
     '#416fe6', '#e641ae', '#b1e634', '#3434e6', '#e69d41', '#41e68e', '#d941e6', '#e0e641', '#4155e6', '#82e634',
     '#e64168', '#41e6d3', '#e64541', '#55e641', '#4185e6', '#e641bb', '#c8e634', '#3445e6', '#e6b141', '#41e671',
     '#e641e0', '#d3e641', '#4145e6', '#99e634', '#e64151', '#41e6c8', '#e65c41', '#3fe641', '#41aee6', '#e641ce'
-]
+]*2
 
         for idx, obj in enumerate(self.geometry_scene.elements):
             self.add(obj._create_mobject(color=colors_hex[idx]))
             self.add(Text(f"{obj.id}", color=BLACK, font_size=30).move_to(obj.show_id_point))
             # 在对象出现后，暂停 0.5 秒
-            self.wait(0.1)
+            self.wait(0.05)
         
         for relation in self.geometry_scene.relations:
             print(relation)
@@ -661,7 +665,7 @@ class GeometricSceneGenerator(Scene):
                 is_break = self.find_intersections()
                 
                 # 5. 生成角度
-                # self.generate_angles()
+                self.generate_angles()
                 
                 # # 7. 添加文本标签（带碰撞检测）
                 # self.add_text_labels_with_collision_detection()

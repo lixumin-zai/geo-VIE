@@ -125,14 +125,17 @@ class MyLine(GeometricElement):
     def angle_deg(self) -> float:
         return self.mobject.get_angle() * 180 / PI
 
-    def angle_deg_on_point(self, point: np.ndarray) -> float:
+    def angle_deg_on_point(self, point_array: np.ndarray) -> float:
         """
         计算以point为中心点时，线段方向向量与x轴正半轴的夹角(0-360度)
         """
         # 计算以point为中心的方向向量self   
-        if np.array_equal(point, self.start_point):
+        if np.array_equal(point_array, self.start_point):
             direction = self.end_point - self.start_point
-        elif np.array_equal(point, self.end_point):
+        elif np.array_equal(point_array, self.end_point):
+            direction = self.start_point - self.end_point
+        else:
+            print("******"*100)
             direction = self.start_point - self.end_point
         
         # 计算与x轴正半轴的夹角
@@ -186,6 +189,8 @@ class MyAngle(GeometricElement):
         self.mobject = self._create_mobject()
         # 计算角度值
         self.value = self._calculate_angle()
+
+        self.show_id_point = vertex_point
 
     def _calculate_angle(self) -> float:
         """计算角度值（弧度）"""
@@ -424,7 +429,7 @@ class RelationType(Enum):
     
     # 构成关系
     LINE_POINTS = "line_points"         # 线段由两点构成的关系
-    ANGLE_POINTS = "angle_points"       # 角由三点构成的关系
+    ANGLE_LINES = "angle_lines"       # 角由三点构成的关系
     CIRCLE_CENTER = "circle_center"     # 圆心关系
     
     # 位置关系
@@ -596,6 +601,31 @@ class LinePointsRelation(ElementRelation):
         return f"线段{self.line.id}由点{self._start_point.id}和点{self._end_point.id}构成"
 
 
+class AngleLineRelation(ElementRelation):
+    """角由线段构成的关系"""
+    def __init__(self, angle: MyAngle, line_start: MyLine, line_end: MyLine, description: str = ""):
+        super().__init__(RelationType.ANGLE_LINES, [angle, line_start, line_end], description)
+        # 逆时针
+        self._angle = angle
+        self._line_start = line_start
+        self._line_end = line_end
+    
+    @property
+    def angle(self) -> MyAngle:
+        return self._angle
+
+    @property
+    def line_start(self) -> MyLine:
+        return self._line_start
+
+    @property
+    def line_end(self) -> MyLine:
+        return self._line_end
+    
+    def __repr__(self) -> str:
+        return f"角{self._angle.id}由线段{self._line_start.id}和线段{self._line_end.id}构成"
+
+
 class CircleCenterRelation(ElementRelation):
     """圆心关系"""
     def __init__(self, circle: MyCircle, center_point: MyPoint, description: str = ""):
@@ -738,7 +768,6 @@ class GeometryScene:
     def remove_element(self, element: GeometricElement):
         """移除元素"""
         if element in self.elements:
-            print(element.type)
             self.elements.remove(element)
     
     def remove_relation(self, relation: ElementRelation):
