@@ -305,9 +305,11 @@ class GeometricSceneGenerator(Scene):
                 # 获取线段关系的点对象
                 for r in self.geometry_scene.get_relations_by_type(RelationType.LINE_POINTS):
                     if line1 == r._line:
+                        r1 = r
                         line1_start_point = r._start_point
                         line1_end_point = r._end_point
                     if line2 == r._line:
+                        r2 = r
                         line2_start_point = r._start_point
                         line2_end_point = r._end_point
 
@@ -348,8 +350,8 @@ class GeometricSceneGenerator(Scene):
                     self.geometry_scene.remove_element(line1)
                     self.geometry_scene.remove_element(line2)
                     # 移除关系
-                    self.geometry_scene.remove_relation(relation)
-                    self.geometry_scene.remove_relation(relation)
+                    self.geometry_scene.remove_relation(r1)
+                    self.geometry_scene.remove_relation(r2)
                     found_new_point = True
                     break
             else:
