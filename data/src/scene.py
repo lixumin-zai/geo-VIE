@@ -433,100 +433,23 @@ class GeometricSceneGenerator(Scene):
         
         return angles
     
-    def add_text_labels_with_collision_detection(self):
-        """添加文本标签并进行碰撞检测"""
-        all_elements = self.geometry_scene.elements
-        text_elements = []
-        
+    def add_text(self):
+        """添加文本标签"""
+        # 获取所有点
+        points = self.geometry_scene.get_elements_by_type(Element.POINT)
         # 为点添加文本标签
-        for element in all_elements:
-            if element.type == Element.POINT and element.key:
-                # 计算标签位置（避免与其他元素碰撞）
-                label_position = self._find_safe_label_position(element, all_elements + text_elements)
-                if label_position is not None:
-                    text_label = MyText(element.key, label_position, self.style)
-                    text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label, f"{element.key}_label")
-                    
-                    # 建立点文本关系
-                    relation = PointTextRelation(element, text_label, f"点{element.key}的标注")
-                    self.geometry_scene.add_relation(relation)
-        
-        # 为线段添加长度标签
-        for element in all_elements:
-            if element.type == Element.LINE and element.value and is_happen(self.config.draw_line_probability):
-                # 计算标签位置
-                midpoint = (element.start_point + element.end_point) / 2
-                # 计算垂直方向
-                direction = element.end_point - element.start_point
-                perpendicular = np.array([-direction[1], direction[0], 0])
-                perpendicular = perpendicular / np.linalg.norm(perpendicular) * 0.5
-                
-                label_position = midpoint + perpendicular
-                text_label = MyText(str(element.value), label_position, self.style)
-                
-                # 检查碰撞
-                if not any(self.collision_detector.check_collision(text_label, existing) 
-                          for existing in all_elements + text_elements):
-                    text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label, f"{element.key}_length_label")
-                    
-                    # 建立线段文本关系
-                    relation = LineTextRelation(element, text_label, f"线段{element.key}的长度标注")
-                    self.geometry_scene.add_relation(relation)
-        
-        # 为角添加角度标签
-        for element in all_elements:
-            if element.type in [Element.ANGLE, Element.RIGHTANGLE] and element.value and is_happen(self.config.show_angle_text_probability):
-                # 计算角平分线上的位置
-                label_position = self._calculate_angle_label_position(element)
-                text_label = MyText(str(element.value), label_position, self.style)
-                
-                # 检查碰撞
-                if not any(self.collision_detector.check_collision(text_label, existing) 
-                          for existing in all_elements + text_elements):
-                    text_elements.append(text_label)
-                    self.geometry_scene.add_element(text_label, f"{element.key}_angle_label")
-                    
-                    # 建立角文本关系
-                    relation = AngleTextRelation(element, text_label, f"角{element.key}的角度标注")
-                    self.geometry_scene.add_relation(relation)
-    
-    def _find_safe_label_position(self, element: GeometricElement, existing_elements: List[GeometricElement]) -> Optional[np.ndarray]:
-        """为元素找到安全的标签位置"""
-        base_position = element.point if hasattr(element, 'point') else np.array([0, 0, 0])
-        
-        # 尝试8个方向
-        directions = [
-            np.array([1, 0, 0]), np.array([-1, 0, 0]), np.array([0, 1, 0]), np.array([0, -1, 0]),
-            np.array([1, 1, 0]), np.array([-1, 1, 0]), np.array([1, -1, 0]), np.array([-1, -1, 0])
-        ]
-        
-        for direction in directions:
-            direction = direction / np.linalg.norm(direction)
-            for distance in [0.4, 0.6, 0.8]:
-                test_position = base_position + direction * distance
-                test_text = MyText(element.key or "T", test_position, self.style)
-                
-                # 检查碰撞
-                collision_found = False
-                for existing in existing_elements:
-                    if self.collision_detector.check_collision(test_text, existing, 0.3):
-                        collision_found = True
-                        break
-                
-                if not collision_found:
-                    return test_position
-        
-        return None
-    
-    def _calculate_angle_label_position(self, angle_element) -> np.ndarray:
-        """计算角度标签的位置"""
-        # 简化实现：返回顶点附近的位置
-        if hasattr(angle_element, 'vertex_point'):
-            return angle_element.vertex_point + np.array([0.3, 0.3, 0])
-        return np.array([0, 0, 0])
-    
+        for point in points:
+            # 创建一个 MyText 对象
+            text = MyText("A", point.point)
+            # 碰撞检测计算文本的位置
+            text_position = point.point + np.array([0.5, 0.5, 0])
+            if self.check_text_collision(text):
+                text.set_position(text_position)
+            # 添加到场景
+            self.geometry_scene.add_element(text)
+
+        pass
+
     def render_scene(self):
         """渲染场景"""
         # 获取需要渲染的Manim对象并添加到场景
@@ -676,8 +599,11 @@ class GeometricSceneGenerator(Scene):
                 # 5. 删除一些线段，是样例更多样
                 self.delete_lines()
 
-                # 5. 生成角度
+                # 6. 生成角度
                 self.generate_angles()
+
+                # 7. 添加文本
+                # self.add_text()
                 
                 
                 # # 8. 验证场景有效性

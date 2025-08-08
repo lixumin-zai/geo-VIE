@@ -371,6 +371,11 @@ class MyText(GeometricElement):
         self.value = text  # 文本的值就是文本内容
         self.mobject = self._create_mobject()
 
+    def set_position(self, position: np.ndarray):
+        """设置文本的位置"""
+        self.location = position
+        self.mobject.move_to(position)
+        
     def get_bounding_box(self) -> List[np.ndarray]:
         """
         在文本边界框的矩形边上均匀采样指定数量的点。
