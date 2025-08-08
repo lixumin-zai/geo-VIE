@@ -114,6 +114,10 @@ class MyLine(GeometricElement):
         self.value = np.linalg.norm(end_point - start_point)
 
     @property
+    def length(self) -> float:
+        return np.linalg.norm(self.end_point - self.start_point)
+    
+    @property
     def vector(self) -> np.ndarray:
         return self.mobject.get_vector()
     

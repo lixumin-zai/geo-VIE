@@ -17,8 +17,6 @@ import math
 from typing import List, Dict, Tuple, Optional
 from utils import *
 
-def is_happen(happen_probability):
-    return np.random.choice([True, False], p=[happen_probability, 1-happen_probability])
 
 class CollisionDetector:
     """碰撞检测器，用于检测几何元素之间的碰撞"""
@@ -363,9 +361,16 @@ class GeometricSceneGenerator(Scene):
         return True
 
     def delete_lines(self):
-        pass
-            
-    
+        lines = self.geometry_scene.get_elements_by_type(Element.LINE)
+        print(len(lines))
+        for line in lines:
+            if is_happen(0.2, "删除线段"):
+                print(line.id)
+                self.geometry_scene.remove_element(line)
+                for r in self.geometry_scene.get_relations_by_type(RelationType.LINE_POINTS):
+                    if line == r._line:
+                        self.geometry_scene.remove_relation(r)
+                            
     def generate_angles(self):
         """生成角度并建立关系"""
         angles = []
@@ -393,6 +398,10 @@ class GeometricSceneGenerator(Scene):
                 line1, angle1 = line_angles[i]
                 line2, angle2 = line_angles[(i + 1) % len(line_angles)]
                 
+                # 如何线段的长度太短，则不生成
+                if line1.length < 1 or line2.length < 1:
+                    continue
+
                 # 最后一个线段跟第一个线段
                 if line2 == line_angles[0][0]:
                     angle2 = angle2 + 360
@@ -536,9 +545,9 @@ class GeometricSceneGenerator(Scene):
 
         for idx, obj in enumerate(self.geometry_scene.elements):
             self.add(obj._create_mobject(color=colors_hex[idx]))
-            self.add(Text(f"{obj.id}", color=BLACK, font_size=30).move_to(obj.show_id_point))
+            # self.add(Text(f"{obj.id}", color=BLACK, font_size=30).move_to(obj.show_id_point))
             # 在对象出现后，暂停 0.5 秒
-            self.wait(0.05)
+            # self.wait(0.05)
         
         for relation in self.geometry_scene.relations:
             print(relation)
@@ -664,11 +673,12 @@ class GeometricSceneGenerator(Scene):
                 # 4. 找到交点
                 is_break = self.find_intersections()
                 
+                # 5. 删除一些线段，是样例更多样
+                self.delete_lines()
+
                 # 5. 生成角度
                 self.generate_angles()
                 
-                # # 7. 添加文本标签（带碰撞检测）
-                # self.add_text_labels_with_collision_detection()
                 
                 # # 8. 验证场景有效性
                 # if self._validate_scene():

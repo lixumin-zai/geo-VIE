@@ -67,3 +67,6 @@ def point_to_line_distance(point: np.ndarray, line_start: np.ndarray, line_end: 
     proj_length = np.dot(point_vec, line_unitvec)
     proj = line_start + proj_length * line_unitvec
     return np.linalg.norm(point - proj)
+
+def is_happen(happen_probability, description=""):
+    return np.random.choice([True, False], p=[happen_probability, 1-happen_probability])
